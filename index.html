@@ -22,24 +22,9 @@
         <p class="eyebrow">IronShield Operator Gate</p>
         <h2 id="authTitle">Wejście do Support War Room</h2>
         <p class="auth-lead">
-          Ten widok jest przeznaczony dla operatora sklepu. Po odblokowaniu zobaczysz kolejkę zgłoszeń,
-          draft odpowiedzi oraz checklistę do BaseLinkera.
+          Ten widok jest przeznaczony dla operatora sklepu. Po odblokowaniu zobaczysz realną kolejkę
+          zgłoszeń klientów, draft odpowiedzi i CTA do BaseLinkera.
         </p>
-
-        <div class="auth-grid">
-          <article class="auth-info auth-info-danger">
-            <p class="mini-label">Najpierw</p>
-            <strong>Nowe maile i pilne reklamacje</strong>
-          </article>
-          <article class="auth-info auth-info-warn">
-            <p class="mini-label">Potem</p>
-            <strong>Dosyłki i ruchy w BaseLinkerze</strong>
-          </article>
-          <article class="auth-info auth-info-accent">
-            <p class="mini-label">Na końcu</p>
-            <strong>Gotowe drafty do skopiowania</strong>
-          </article>
-        </div>
 
         <label class="auth-field" for="passcodeInput">
           <span class="mini-label">Hasło operatora</span>
@@ -66,8 +51,8 @@
           <p class="eyebrow">IronShield HQ</p>
           <h1>Customer Support War Room</h1>
           <p class="lead">
-            Publiczny dashboard demonstracyjny dla Twojego procesu supportowego:
-            kolejka spraw, draft odpowiedzi i checklista do BaseLinkera bez backendu.
+            Panel do obsługi klientów: kolejka spraw, draft odpowiedzi i konkretne CTA do dalszej
+            pracy w BaseLinkerze.
           </p>
         </div>
 
@@ -81,10 +66,10 @@
             <strong id="alertHeadline">Ladowanie...</strong>
           </div>
           <p id="alertSubline" class="muted">
-            To jest bezpieczna, hostowana wersja demo bez bezpośredniego dostępu do Gmaila.
+            Po odblokowaniu zobaczysz realne zgłoszenia klientów.
           </p>
           <p id="syncMeta" class="muted">
-            Panel odczytuje publiczny feed z repozytorium.
+            Panel ładuje feed klientów.
           </p>
 
           <div class="hero-meta">
@@ -106,24 +91,6 @@
 
       <section id="statsGrid" class="stats-grid"></section>
 
-      <section class="priority-guide">
-        <article class="guide-card guide-card-danger">
-          <p class="mini-label">Strefa czerwona</p>
-          <strong>Nowe maile i świeże zgłoszenia</strong>
-          <p>Zaczynasz tutaj. To są sprawy, które najbardziej potrzebują pierwszego ruchu.</p>
-        </article>
-        <article class="guide-card guide-card-warn">
-          <p class="mini-label">Strefa pomarańczowa</p>
-          <strong>BaseLinker, dosyłki i reklamacje</strong>
-          <p>Tu panel mówi Ci dokładnie co ręcznie ustawić, zanim poleci finalna odpowiedź.</p>
-        </article>
-        <article class="guide-card guide-card-accent">
-          <p class="mini-label">Strefa turkusowa</p>
-          <strong>Gotowe drafty i zamknięcie sprawy</strong>
-          <p>Na końcu kopiujesz lub domykasz temat, kiedy wszystko po Twojej stronie już jest ogarnięte.</p>
-        </article>
-      </section>
-
       <section class="workspace">
         <aside class="panel queue-panel">
           <div class="queue-head">
@@ -132,14 +99,10 @@
               <h2>Kolejka klientow</h2>
             </div>
             <div class="queue-actions">
-              <button id="importSnapshotBtn" class="ghost-btn" type="button">Wczytaj prywatny snapshot</button>
-              <button id="clearSnapshotBtn" class="ghost-btn" type="button" hidden>Wroc do demo</button>
               <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez dane</button>
               <button id="resetDemoBtn" class="ghost-btn" type="button">Reset lokalnych zmian</button>
             </div>
           </div>
-
-          <input id="importSnapshotInput" type="file" accept="application/json" hidden />
 
           <label class="search-box" for="searchInput">
             <span class="mini-label">Szukaj po mailu, numerze albo figurce</span>
@@ -153,30 +116,14 @@
         <section class="panel detail-panel">
           <div id="detailView" class="detail-view"></div>
         </section>
+      </section>
 
-        <aside class="panel ops-panel">
-          <div>
-            <p class="eyebrow">Operator View</p>
-            <h2>Co Ty robisz dalej</h2>
-          </div>
-
-          <div id="opsSummary" class="ops-summary"></div>
-
-          <div class="ops-card">
-            <p class="mini-label">Alerty i workflow</p>
-            <ul id="opsChecklist" class="ops-list"></ul>
-          </div>
-
-          <div class="ops-card roadmap">
-            <p class="mini-label">Następny etap integracji</p>
-            <ul class="roadmap-list">
-              <li>Prywatny backend do czytania Gmaila poza publicznym repo.</li>
-              <li>Automatyczne tworzenie dosyłki lub replacementu w BaseLinkerze.</li>
-              <li>Status paczki zaciągany z BaseLinkera do widoku zgłoszenia.</li>
-              <li>Wysyłka maila wraca dopiero po spięciu prywatnego API.</li>
-            </ul>
-          </div>
-        </aside>
+      <section class="support-hooks" aria-hidden="true" hidden>
+        <button id="importSnapshotBtn" type="button">Hidden import</button>
+        <button id="clearSnapshotBtn" type="button">Hidden clear</button>
+        <input id="importSnapshotInput" type="file" accept="application/json" />
+        <div id="opsSummary"></div>
+        <ul id="opsChecklist"></ul>
       </section>
     </main>
 
@@ -207,5 +154,6 @@
     <script src="support-data.js"></script>
     <script src="app.js"></script>
     <script src="secure-feed.js"></script>
+    <script src="warroom-hotfix.js"></script>
   </body>
 </html>
