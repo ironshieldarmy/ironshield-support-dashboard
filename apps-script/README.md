@@ -1,36 +1,33 @@
-# IronShield Support Dashboard
+# Apps Script Deployment
 
-To jest darmowy dashboard supportowy do uruchomienia w `Google Apps Script`.
-
-## Co robi
-
-- czyta nowe i aktywne maile klientów z Gmaila
-- ignoruje spam, faktury i outreach marketingowy
-- pokazuje kolejkę spraw, draft odpowiedzi i CTA operacyjne
-- pozwala oznaczać statusy
-- pozwala wysyłać odpowiedzi bezpośrednio z panelu
+Ten folder zawiera wersję dashboardu przygotowaną do wdrożenia jako `Google Apps Script Web App`.
 
 ## Jak wdrożyć
 
-1. Zaloguj się na konto Google, do którego wpadają maile `ironshieldarmy@gmail.com`, `support@ironshieldarmy.com` i `office@ironshieldarmy.com`.
-2. Wejdź na [script.new](https://script.new/) i utwórz nowy projekt Apps Script.
-3. W projekcie utwórz pliki:
+1. Otwórz [script.new](https://script.new/) na koncie Google, które ma dostęp do Gmaila sklepu.
+2. Utwórz nowy projekt, np. `IronShield Support Dashboard`.
+3. Skopiuj zawartość plików:
    - `Code.gs`
    - `Dashboard.html`
    - `Stylesheet.html`
    - `AppClient.html`
-   - `appsscript.json`
-4. Wklej do nich zawartość plików z tego folderu `apps-script/`.
-5. Zapisz projekt i uruchom dowolną funkcję, np. `doGet`, żeby nadać uprawnienia do Gmaila.
-6. W `Deploy -> New deployment` wybierz `Web app`.
+4. W `Ustawienia projektu` włącz pokazanie pliku `appsscript.json` i wklej tam manifest z tego folderu.
+5. Uruchom ręcznie funkcję `doGet`, żeby nadać uprawnienia.
+6. Wybierz `Wdróż -> Nowe wdrożenie -> Aplikacja internetowa`.
 7. Ustaw:
-   - `Execute as`: `Me`
-   - `Who has access`: `Only myself`
-8. Otwórz adres wdrożenia i sprawdź panel.
+   - `Wykonuj jako`: `Ja`
+   - `Kto ma dostęp`: `Tylko ja`
+8. Zapisz link do wdrożenia.
 
-## Ważne uwagi
+## Co robi ta wersja
 
-- Panel działa na bieżąco z aktualną skrzynką, więc nie potrzebuje localhosta.
-- Aliasy `support@ironshieldarmy.com` i `office@ironshieldarmy.com` muszą już wpadać do tej samej skrzynki Gmail.
-- Klasyfikacja maili jest heurystyczna, więc warto co jakiś czas dopisać nowe wzorce do `Code.gs`.
-- Następny logiczny etap to integracja z `BaseLinker API`.
+- czyta nieprzeczytane maile klientów z Gmaila,
+- filtruje większość marketingu i wiadomości biznesowych,
+- buduje listę zgłoszeń do dashboardu,
+- pokazuje draft odpowiedzi,
+- pozwala wysłać reply z poziomu Apps Script,
+- pokazuje CTA do ręcznej akcji w `BaseLinkerze`.
+
+## Uwaga
+
+To był etap przejściowy. Jeśli `Google Apps Script` na Twoim koncie blokuje otwieranie `Web App`, aktualny kierunek projektu to publiczny frontend na `GitHub Pages` + prywatny backend poza repozytorium.

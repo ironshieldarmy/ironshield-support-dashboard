@@ -1,10 +1,15 @@
 const UI_STORAGE_KEY = "ironshield_support_ui_v3";
 const OVERRIDES_STORAGE_KEY = "ironshield_support_overrides_v3";
+const AUTH_STATE_KEY = "ironshield_support_auth_v1";
 const LIVE_DATA_SCRIPT = "support-data.js";
 const DEFAULT_CONFIG = {
   mode: "demo",
   remoteDataUrl: "",
   refreshIntervalMs: 60 * 1000,
+  auth: {
+    enabled: false,
+    passcodeHash: "",
+  },
   labels: {
     mode: "GitHub Pages demo",
     features: "Queue + draft + CTA",
@@ -88,9 +93,17 @@ const state = {
     ticketCount: 0,
   },
   isSyncing: false,
+  isUnlocked: true,
+  isUnlocking: false,
 };
 
 const el = {
+  authGate: document.getElementById("authGate"),
+  appShell: document.getElementById("appShell"),
+  passcodeInput: document.getElementById("passcodeInput"),
+  unlockBtn: document.getElementById("unlockBtn"),
+  authMessage: document.getElementById("authMessage"),
+  lockPanelBtn: document.getElementById("lockPanelBtn"),
   statsGrid: document.getElementById("statsGrid"),
   filterBar: document.getElementById("filterBar"),
   ticketList: document.getElementById("ticketList"),
@@ -117,6 +130,7 @@ function clone(value) {
 function runtimeConfig() {
   const raw = window.__IRONSHIELD_SUPPORT_CONFIG__ || {};
   const labels = raw.labels && typeof raw.labels === "object" ? raw.labels : {};
+  const auth = raw.auth && typeof raw.auth === "object" ? raw.auth : {};
 
   return {
     mode: raw.mode === "remote" ? "remote" : "demo",
@@ -125,6 +139,11 @@ function runtimeConfig() {
       Number.isFinite(raw.refreshIntervalMs) && raw.refreshIntervalMs >= 15 * 1000
         ? raw.refreshIntervalMs
         : DEFAULT_CONFIG.refreshIntervalMs,
+    auth: {
+      enabled: Boolean(auth.enabled),
+      passcodeHash:
+        typeof auth.passcodeHash === "string" ? auth.passcodeHash.trim().toLowerCase() : "",
+    },
     labels: {
       mode: labels.mode || DEFAULT_CONFIG.labels.mode,
       features: labels.features || DEFAULT_CONFIG.labels.features,
@@ -135,6 +154,106 @@ function runtimeConfig() {
 
 function usesRemoteApi() {
   return state.config.mode === "remote" && Boolean(state.config.remoteDataUrl);
+}
+
+function authEnabled() {
+  return state.config.auth.enabled && Boolean(state.config.auth.passcodeHash);
+}
+
+function readAuthState() {
+  if (!authEnabled()) return true;
+  return sessionStorage.getItem(AUTH_STATE_KEY) === state.config.auth.passcodeHash;
+}
+
+function persistAuthState(unlocked) {
+  if (!authEnabled()) return;
+
+  if (unlocked) {
+    sessionStorage.setItem(AUTH_STATE_KEY, state.config.auth.passcodeHash);
+    return;
+  }
+
+  sessionStorage.removeItem(AUTH_STATE_KEY);
+}
+
+function setAuthMessage(message, mode = "default") {
+  el.authMessage.textContent = message;
+  el.authMessage.dataset.mode = mode;
+}
+
+async function sha256Hex(value) {
+  const buffer = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function applyAuthState() {
+  const locked = authEnabled() && !state.isUnlocked;
+  document.body.classList.toggle("locked", locked);
+  el.authGate.hidden = !locked;
+  el.lockPanelBtn.hidden = !authEnabled();
+  el.appShell.setAttribute("aria-hidden", String(locked));
+
+  if ("inert" in el.appShell) {
+    el.appShell.inert = locked;
+  }
+
+  if (!locked) {
+    el.passcodeInput.value = "";
+    setAuthMessage("To jest lekka blokada front-endowa dla szybkiego ograniczenia dostępu do panelu.");
+  }
+}
+
+async function unlockPanel() {
+  if (!authEnabled()) return;
+
+  const candidate = el.passcodeInput.value.trim();
+  if (!candidate) {
+    setAuthMessage("Wpisz hasło operatora, żeby wejść do panelu.", "error");
+    el.passcodeInput.focus();
+    return;
+  }
+
+  state.isUnlocking = true;
+  el.unlockBtn.disabled = true;
+  setAuthMessage("Sprawdzam hasło...", "info");
+
+  try {
+    const candidateHash = await sha256Hex(candidate);
+
+    if (candidateHash !== state.config.auth.passcodeHash) {
+      setAuthMessage("To hasło nie pasuje. Spróbuj jeszcze raz.", "error");
+      el.passcodeInput.select();
+      return;
+    }
+
+    state.isUnlocked = true;
+    persistAuthState(true);
+    applyAuthState();
+    render();
+
+    if (usesRemoteApi() && !state.liveMeta.updatedAt) {
+      refreshLiveData({ silent: true });
+    }
+
+    toast("Panel odblokowany.");
+    el.searchInput.focus();
+  } catch {
+    setAuthMessage("Nie udało się zweryfikować hasła w tej przeglądarce.", "error");
+  } finally {
+    state.isUnlocking = false;
+    el.unlockBtn.disabled = false;
+  }
+}
+
+function lockPanel() {
+  if (!authEnabled()) return;
+  state.isUnlocked = false;
+  persistAuthState(false);
+  applyAuthState();
+  el.passcodeInput.focus();
+  toast("Panel został zablokowany.");
 }
 
 function loadUiState() {
@@ -253,6 +372,41 @@ function formatAge(iso) {
   return `${Math.round(diffHours / 24)}d temu`;
 }
 
+function focusMessage(ticket) {
+  if (ticket.needsBaselinker && !ticket.baselinkerDone) {
+    return {
+      title: "Najpierw ręczny ruch w BaseLinkerze albo na produkcji",
+      body: "Ten temat nie powinien zostać zamknięty, dopóki nie przygotujesz dosyłki, replacementu albo statusu potrzebnego do odpowiedzi.",
+    };
+  }
+
+  if (ticket.unread) {
+    return {
+      title: "Najpierw oceń draft i zdecyduj, czy to już odpowiedź do klienta",
+      body: "To świeży mail. Priorytetem jest szybkie potwierdzenie problemu i ustawienie sprawy na właściwy tor.",
+    };
+  }
+
+  if (ticket.status === "ready") {
+    return {
+      title: "Draft jest gotowy, możesz go skopiować albo dopracować",
+      body: "To najbliższy krok do zamknięcia sprawy. Sprawdź tylko, czy nic nie czeka jeszcze po stronie operacyjnej.",
+    };
+  }
+
+  if (ticket.status === "sent") {
+    return {
+      title: "Sprawa jest już domknięta po stronie panelu",
+      body: "Tutaj tylko monitorujesz, czy klient wróci z nową odpowiedzią lub dodatkową prośbą.",
+    };
+  }
+
+  return {
+    title: "Skontroluj status zgłoszenia i następny ruch operatora",
+    body: "Panel podpowiada, co zrobić teraz, ale to Ty decydujesz, czy temat jest gotowy do dalszego kroku.",
+  };
+}
+
 function counts() {
   return state.tickets.reduce(
     (acc, ticket) => {
@@ -301,21 +455,25 @@ function renderStats() {
       label: "Nowe maile",
       value: String(summary.unread),
       subtitle: "Swieze wiadomosci, ktore wymagaja ruchu supportu.",
+      tone: "danger",
     },
     {
       label: "Do BaseLinkera",
       value: String(summary.ops),
       subtitle: "Sprawy, gdzie bez recznej operacji nie ma finalnej odpowiedzi.",
+      tone: "warn",
     },
     {
       label: "Gotowe drafty",
       value: String(summary.ready),
       subtitle: "Tu draft juz jest, a Ty tylko go przegladasz lub kopiujesz.",
+      tone: "accent",
     },
     {
       label: "Sync source",
       value: state.liveMeta.ticketCount ? String(state.liveMeta.ticketCount) : "0",
       subtitle: `Ostatni feed: ${state.liveMeta.syncSource}`,
+      tone: "neutral",
     },
   ];
 
@@ -323,6 +481,7 @@ function renderStats() {
 
   items.forEach((item) => {
     const node = el.statCardTemplate.content.firstElementChild.cloneNode(true);
+    node.classList.add(`stat-card--${item.tone}`);
     node.querySelector(".mini-label").textContent = item.label;
     node.querySelector(".stat-value").textContent = item.value;
     node.querySelector(".stat-subtitle").textContent = item.subtitle;
@@ -353,15 +512,17 @@ function renderAlert() {
 
 function renderSyncMeta() {
   const updated = state.liveMeta.updatedAt ? formatDate(state.liveMeta.updatedAt) : "brak syncu";
-  const syncingText = state.isSyncing
-    ? usesRemoteApi()
-      ? "Trwa odswiezanie prywatnego API..."
-      : "Trwa odswiezanie feedu demo..."
-    : usesRemoteApi()
-      ? "Panel czyta prywatny endpoint JSON."
-      : "Panel czyta publiczny plik support-data.js.";
+  const syncingText = authEnabled() && !state.isUnlocked
+    ? "Panel jest zablokowany haslem operatora."
+    : state.isSyncing
+      ? usesRemoteApi()
+        ? "Trwa odswiezanie prywatnego API..."
+        : "Trwa odswiezanie feedu demo..."
+      : usesRemoteApi()
+        ? "Panel czyta prywatny endpoint JSON."
+        : "Panel czyta publiczny plik support-data.js.";
   el.syncMeta.textContent = `Ostatni sync: ${updated}. Zrodlo: ${state.liveMeta.syncSource}. ${syncingText}`;
-  el.syncNowBtn.disabled = state.isSyncing;
+  el.syncNowBtn.disabled = state.isSyncing || (authEnabled() && !state.isUnlocked);
   el.syncNowBtn.textContent = state.isSyncing ? "Odswiezanie..." : "Odswiez dane";
 }
 
@@ -409,6 +570,9 @@ function renderQueue() {
     const statusMeta = STATUS_META[ticket.status];
 
     node.classList.toggle("active", ticket.id === state.selectedId);
+    node.classList.add(`ticket-card--${ticket.status}`);
+    node.classList.toggle("is-unread", ticket.unread);
+    node.classList.toggle("needs-ops", ticket.needsBaselinker && !ticket.baselinkerDone);
     node.querySelector(".ticket-name").textContent = ticket.customerName;
     node.querySelector(".ticket-age").textContent = formatAge(ticket.receivedAt);
     node.querySelector(".ticket-subject").textContent = ticket.subject;
@@ -443,9 +607,10 @@ function renderDetail() {
   }
 
   const statusMeta = STATUS_META[ticket.status];
+  const focus = focusMessage(ticket);
 
   el.detailView.innerHTML = `
-    <article class="customer-card">
+    <article class="customer-card customer-card--${ticket.status}">
       <div class="detail-top">
         <div>
           <p class="eyebrow">Wybrane zgloszenie</p>
@@ -477,7 +642,13 @@ function renderDetail() {
       </div>
     </article>
 
-    <article class="summary-strip">
+    <article class="focus-card focus-card--${ticket.status}">
+      <p class="mini-label">Najwazniejsze teraz</p>
+      <strong>${escapeHtml(focus.title)}</strong>
+      <p class="detail-copy">${escapeHtml(focus.body)}</p>
+    </article>
+
+    <article class="summary-strip summary-strip--${ticket.status}">
       <div>
         <p class="mini-label">Podsumowanie sprawy</p>
         <h3 class="summary-title">${escapeHtml(ticket.summary)}</h3>
@@ -487,7 +658,7 @@ function renderDetail() {
       </div>
     </article>
 
-    <article class="cta-card">
+    <article class="cta-card cta-card--${ticket.status}">
       <p class="mini-label">CTA dla Ciebie</p>
       <ul class="cta-list">
         <li><strong>Numer zamowienia:</strong> ${escapeHtml(ticket.internalCta.orderNumber)}</li>
@@ -497,7 +668,7 @@ function renderDetail() {
       </ul>
     </article>
 
-    <article class="composer-card">
+    <article class="composer-card composer-card--${ticket.status}">
       <label for="draftEditor">
         <span class="mini-label">Proponowana odpowiedz</span>
         <textarea id="draftEditor"></textarea>
@@ -602,6 +773,9 @@ function renderOpsPanel() {
   if (ticket.status === "sent") {
     opsItems.push("W panelu sprawa jest zamknieta. Czekaj tylko na kolejna odpowiedz klienta.");
   }
+  if (!opsItems.length) {
+    opsItems.push("Panel nie wykryl czerwonej flagi. Sprawdz draft i zdecyduj, czy temat jest gotowy do kolejnego kroku.");
+  }
 
   el.opsSummary.innerHTML = `
     <div class="ops-card">
@@ -692,7 +866,7 @@ function fetchRemotePayload() {
 }
 
 function refreshLiveData({ silent = false } = {}) {
-  if (state.isSyncing) return;
+  if (state.isSyncing || (authEnabled() && !state.isUnlocked)) return;
 
   state.isSyncing = true;
   renderSyncMeta();
@@ -749,6 +923,21 @@ function refreshLiveData({ silent = false } = {}) {
 function attachEvents() {
   el.searchInput.value = state.search;
 
+  el.unlockBtn.addEventListener("click", () => {
+    unlockPanel();
+  });
+
+  el.passcodeInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      unlockPanel();
+    }
+  });
+
+  el.lockPanelBtn.addEventListener("click", () => {
+    lockPanel();
+  });
+
   el.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value;
     saveUiState();
@@ -772,9 +961,11 @@ function attachEvents() {
 loadUiState();
 loadOverrides();
 state.config = runtimeConfig();
+state.isUnlocked = readAuthState();
 applyPayload(usesRemoteApi() ? null : window.__IRONSHIELD_SUPPORT_DATA__);
 attachEvents();
 render();
+applyAuthState();
 if (usesRemoteApi()) {
   refreshLiveData({ silent: true });
 }

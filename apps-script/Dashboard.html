@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="pl">
   <head>
+    <base target="_top" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IronShield Army - Support War Room</title>
+    <title>IronShield Support Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -23,9 +24,8 @@
           <p class="eyebrow">IronShield HQ</p>
           <h1>Customer Support War Room</h1>
           <p class="lead">
-            Darmowy panel supportowy zasilany z Gmaila przez Google Apps Script. Jedno
-            miejsce na nowe maile, draft odpowiedzi, checklistę do BaseLinkera i wysyłkę
-            maili bez localhosta.
+            Jeden panel na nowe maile klientów, draft odpowiedzi, checklistę do BaseLinkera
+            i ręczne akcje dla produkcji.
           </p>
         </div>
 
@@ -35,25 +35,8 @@
             <span class="pulse-dot"></span>
             <strong id="alertHeadline">Ladowanie...</strong>
           </div>
-          <p id="alertSubline" class="muted">
-            Panel sprawdza aktualna kolejke z Gmaila i pokazuje tylko actionable watki.
-          </p>
-          <p id="syncMeta" class="muted">Ladowanie danych z Apps Script...</p>
-
-          <div class="hero-meta">
-            <div>
-              <span class="mini-label">Hosting</span>
-              <strong>Google Apps Script</strong>
-            </div>
-            <div>
-              <span class="mini-label">Skrzynki</span>
-              <strong>Gmail + support + office</strong>
-            </div>
-            <div>
-              <span class="mini-label">Nastepny etap</span>
-              <strong>BaseLinker API</strong>
-            </div>
-          </div>
+          <p id="alertSubline" class="muted">Trwa wczytywanie kwalifikowanych maili klientow.</p>
+          <p id="syncMeta" class="muted">Brak syncu.</p>
         </div>
       </header>
 
@@ -66,10 +49,7 @@
               <p class="eyebrow">Inbox Radar</p>
               <h2>Kolejka klientow</h2>
             </div>
-            <div class="queue-actions">
-              <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez z Gmaila</button>
-              <button id="resetDemoBtn" class="ghost-btn" type="button">Reset statusow</button>
-            </div>
+            <button id="refreshBtn" class="ghost-btn" type="button">Odswiez z Gmaila</button>
           </div>
 
           <label class="search-box" for="searchInput">
@@ -99,12 +79,11 @@
           </div>
 
           <div class="ops-card roadmap">
-            <p class="mini-label">Roadmap</p>
+            <p class="mini-label">Nastepny etap</p>
             <ul class="roadmap-list">
-              <li>BaseLinker bedzie tworzyl dosylki i replacementy automatycznie.</li>
-              <li>Tracking zamowienia wpada od razu do watku klienta i draftu.</li>
-              <li>Powiadomienia mozna potem rozszerzyc o Telegram albo Discord.</li>
-              <li>Watcher moze pozniej dopisywac priorytety i SLA dla klientow.</li>
+              <li>Przycisk `Wyslij maila` spięty z reply w Gmailu.</li>
+              <li>Automatyczne tworzenie dosyłki / replacementu w BaseLinkerze.</li>
+              <li>Status paczki zaciągany z BaseLinkera do widoku zgłoszenia.</li>
             </ul>
           </div>
         </aside>
@@ -134,9 +113,6 @@
       </button>
     </template>
 
-    <script>
-      window.__IRONSHIELD_BOOTSTRAP__ = <?!= bootstrapJson ?>;
-    </script>
     <?!= include('AppClient'); ?>
   </body>
 </html>

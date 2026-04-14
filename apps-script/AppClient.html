@@ -1,116 +1,49 @@
 <script>
-  const UI_STORAGE_KEY = "ironshield_support_apps_script_ui_v1";
-
-  const FILTERS = [
-    { id: "all", label: "Wszystko" },
-    { id: "new", label: "Nowe" },
-    { id: "needs-baselinker", label: "BaseLinker" },
-    { id: "ready", label: "Gotowe do wysylki" },
-    { id: "waiting", label: "Czeka na klienta" },
-    { id: "sent", label: "Wyslane" },
-  ];
-
-  const STATUS_META = {
-    new: { label: "Nowy mail", badgeClass: "badge-danger" },
-    "needs-baselinker": { label: "Wymaga BaseLinkera", badgeClass: "badge-warn" },
-    ready: { label: "Gotowe do wysylki", badgeClass: "badge-accent" },
-    waiting: { label: "Czeka na klienta", badgeClass: "" },
-    sent: { label: "Wyslane", badgeClass: "" },
+  const statusMeta = {
+    new: { label: 'Nowy mail', badgeClass: 'badge-danger' },
+    'needs-baselinker': { label: 'Wymaga BaseLinkera', badgeClass: 'badge-warn' },
+    ready: { label: 'Gotowe do wysylki', badgeClass: 'badge-accent' },
+    waiting: { label: 'Czeka na klienta', badgeClass: '' },
+    sent: { label: 'Wyslane', badgeClass: '' },
   };
 
-  const bootstrap = window.__IRONSHIELD_BOOTSTRAP__ || {};
-  const apiBaseUrl = bootstrap.apiBaseUrl || window.location.href;
+  const filters = [
+    { id: 'all', label: 'Wszystko' },
+    { id: 'new', label: 'Nowe' },
+    { id: 'needs-baselinker', label: 'BaseLinker' },
+    { id: 'ready', label: 'Gotowe do wysylki' },
+    { id: 'waiting', label: 'Czeka na klienta' },
+    { id: 'sent', label: 'Wyslane' },
+  ];
 
   const state = {
-    filter: "all",
-    search: "",
-    selectedId: null,
     tickets: [],
-    liveMeta: {
+    filter: 'all',
+    search: '',
+    selectedId: null,
+    syncMeta: {
       updatedAt: null,
-      syncSource: "apps-script",
+      syncSource: 'gmail',
       ticketCount: 0,
     },
-    isSyncing: false,
-    isSending: false,
+    isLoading: true,
   };
 
   const el = {
-    statsGrid: document.getElementById("statsGrid"),
-    filterBar: document.getElementById("filterBar"),
-    ticketList: document.getElementById("ticketList"),
-    detailView: document.getElementById("detailView"),
-    opsSummary: document.getElementById("opsSummary"),
-    opsChecklist: document.getElementById("opsChecklist"),
-    searchInput: document.getElementById("searchInput"),
-    resetDemoBtn: document.getElementById("resetDemoBtn"),
-    syncNowBtn: document.getElementById("syncNowBtn"),
-    syncMeta: document.getElementById("syncMeta"),
-    alertHeadline: document.getElementById("alertHeadline"),
-    alertSubline: document.getElementById("alertSubline"),
-    statCardTemplate: document.getElementById("statCardTemplate"),
-    ticketCardTemplate: document.getElementById("ticketCardTemplate"),
+    statsGrid: document.getElementById('statsGrid'),
+    filterBar: document.getElementById('filterBar'),
+    ticketList: document.getElementById('ticketList'),
+    detailView: document.getElementById('detailView'),
+    opsSummary: document.getElementById('opsSummary'),
+    opsChecklist: document.getElementById('opsChecklist'),
+    searchInput: document.getElementById('searchInput'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    alertHeadline: document.getElementById('alertHeadline'),
+    alertSubline: document.getElementById('alertSubline'),
+    syncMeta: document.getElementById('syncMeta'),
+    statCardTemplate: document.getElementById('statCardTemplate'),
+    ticketCardTemplate: document.getElementById('ticketCardTemplate'),
   };
-
-  function clone(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function loadUiState() {
-    const raw = localStorage.getItem(UI_STORAGE_KEY);
-    if (!raw) return;
-
-    try {
-      const parsed = JSON.parse(raw);
-      state.filter = parsed.filter || state.filter;
-      state.search = parsed.search || "";
-      state.selectedId = parsed.selectedId || null;
-    } catch (error) {
-      console.warn("Could not restore UI state.", error);
-    }
-  }
-
-  function saveUiState() {
-    localStorage.setItem(
-      UI_STORAGE_KEY,
-      JSON.stringify({
-        filter: state.filter,
-        search: state.search,
-        selectedId: state.selectedId,
-      })
-    );
-  }
-
-  function normalizePayload(raw) {
-    return {
-      updatedAt: raw && raw.updatedAt ? raw.updatedAt : null,
-      syncSource: raw && raw.syncSource ? raw.syncSource : "apps-script",
-      ticketCount: raw && Array.isArray(raw.tickets) ? raw.tickets.length : 0,
-      tickets: raw && Array.isArray(raw.tickets) ? clone(raw.tickets) : [],
-    };
-  }
-
-  function applyPayload(rawPayload) {
-    const payload = normalizePayload(rawPayload);
-    state.liveMeta = {
-      updatedAt: payload.updatedAt,
-      syncSource: payload.syncSource,
-      ticketCount: payload.ticketCount,
-    };
-    state.tickets = payload.tickets;
-    ensureSelectedTicket();
-  }
-
-  function ensureSelectedTicket() {
-    const exists = state.tickets.some((ticket) => ticket.id === state.selectedId);
-    if (!exists) {
-      state.selectedId = state.tickets[0] ? state.tickets[0].id : null;
-    }
-  }
-
-  function selectedTicket() {
-    return state.tickets.find((ticket) => ticket.id === state.selectedId) || null;
-  }
 
   function counts() {
     return state.tickets.reduce(
@@ -121,16 +54,15 @@
         if (ticket.needsBaselinker && !ticket.baselinkerDone) acc.ops += 1;
         return acc;
       },
-      { all: 0, unread: 0, new: 0, "needs-baselinker": 0, ready: 0, waiting: 0, sent: 0, ops: 0 }
+      { all: 0, unread: 0, new: 0, 'needs-baselinker': 0, ready: 0, waiting: 0, sent: 0, ops: 0 }
     );
   }
 
   function filteredTickets() {
     const term = state.search.trim().toLowerCase();
-
     return state.tickets
       .filter((ticket) => {
-        if (state.filter !== "all" && ticket.status !== state.filter) return false;
+        if (state.filter !== 'all' && ticket.status !== state.filter) return false;
         if (!term) return true;
 
         const haystack = [
@@ -140,9 +72,9 @@
           ticket.orderNumber,
           ticket.preview,
           ticket.summary,
-          ticket.internalCta && ticket.internalCta.baseLinkerAction,
+          ticket.internalCta?.baseLinkerAction,
         ]
-          .join(" ")
+          .join(' ')
           .toLowerCase();
 
         return haystack.includes(term);
@@ -153,14 +85,18 @@
       });
   }
 
+  function selectedTicket() {
+    return state.tickets.find((ticket) => ticket.id === state.selectedId) || null;
+  }
+
   function formatDate(iso) {
-    if (!iso) return "brak danych";
-    return new Date(iso).toLocaleString("pl-PL", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
+    if (!iso) return 'brak danych';
+    return new Date(iso).toLocaleString('pl-PL', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   }
 
@@ -168,111 +104,78 @@
     const then = new Date(iso).getTime();
     const diffMs = Date.now() - then;
     const diffHours = Math.max(0, Math.round(diffMs / (1000 * 60 * 60)));
-    if (diffHours < 1) return "<1h temu";
-    if (diffHours < 24) return diffHours + "h temu";
-    return Math.round(diffHours / 24) + "d temu";
-  }
-
-  function canSendTicket(ticket) {
-    if (!ticket || state.isSending || ticket.status === "sent") return false;
-    if (!String(ticket.draft || "").trim()) return false;
-    if (ticket.needsBaselinker && !ticket.baselinkerDone) return false;
-    return ticket.sendEnabled !== false;
-  }
-
-  function escapeHtml(text) {
-    return String(text || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
+    if (diffHours < 1) return '<1h temu';
+    if (diffHours < 24) return `${diffHours}h temu`;
+    return `${Math.round(diffHours / 24)}d temu`;
   }
 
   function renderStats() {
     const summary = counts();
     const items = [
       {
-        label: "Nowe maile",
+        label: 'Nowe maile',
         value: String(summary.unread),
-        subtitle: "Swieze wiadomosci, ktore wymagaja ruchu supportu.",
+        subtitle: 'Swieze wiadomosci, ktore wymagaja ruchu supportu.',
       },
       {
-        label: "Do BaseLinkera",
+        label: 'Do BaseLinkera',
         value: String(summary.ops),
-        subtitle: "Sprawy, gdzie bez recznej operacji nie ma finalnej odpowiedzi.",
+        subtitle: 'Sprawy, gdzie bez recznej operacji nie ma finalnej odpowiedzi.',
       },
       {
-        label: "Gotowe drafty",
+        label: 'Gotowe drafty',
         value: String(summary.ready),
-        subtitle: "Tu draft juz jest i mozna go wyslac prosto z panelu.",
+        subtitle: 'Tu draft juz jest, a Ty tylko zatwierdzasz albo wysylasz.',
       },
       {
-        label: "Aktywne watki",
-        value: String(state.liveMeta.ticketCount || 0),
-        subtitle: "Ostatni feed: " + state.liveMeta.syncSource,
+        label: 'Sync source',
+        value: state.syncMeta.ticketCount ? String(state.syncMeta.ticketCount) : '0',
+        subtitle: `Ostatni sync: ${state.syncMeta.syncSource}`,
       },
     ];
 
-    el.statsGrid.innerHTML = "";
+    el.statsGrid.innerHTML = '';
 
     items.forEach((item) => {
       const node = el.statCardTemplate.content.firstElementChild.cloneNode(true);
-      node.querySelector(".mini-label").textContent = item.label;
-      node.querySelector(".stat-value").textContent = item.value;
-      node.querySelector(".stat-subtitle").textContent = item.subtitle;
+      node.querySelector('.mini-label').textContent = item.label;
+      node.querySelector('.stat-value').textContent = item.value;
+      node.querySelector('.stat-subtitle').textContent = item.subtitle;
       el.statsGrid.appendChild(node);
     });
   }
 
   function renderAlert() {
     const unreadTickets = state.tickets.filter((ticket) => ticket.unread);
-
     el.alertHeadline.textContent = unreadTickets.length
-      ? unreadTickets.length + " mail(e) klientow czekaja na ruch"
-      : "Brak nowych maili klientow";
+      ? `${unreadTickets.length} mail(e) klientow czekaja na ruch`
+      : 'Brak nowych maili klientow';
 
-    if (!unreadTickets.length) {
-      el.alertSubline.textContent =
-        "Panel czyta Twoja skrzynke na zywo. Kiedy wpadnie cos nowego, pojawi sie tutaj w kolejce.";
-      return;
-    }
-
-    el.alertSubline.textContent = unreadTickets
-      .slice(0, 3)
-      .map((ticket) => ticket.customerName + " (" + ticket.orderNumber + ")")
-      .join(", ");
+    el.alertSubline.textContent = unreadTickets.length
+      ? unreadTickets
+          .slice(0, 3)
+          .map((ticket) => `${ticket.customerName} (${ticket.orderNumber})`)
+          .join(', ')
+      : 'Panel jest zsynchronizowany z kwalifikowanymi mailami klientów.';
   }
 
   function renderSyncMeta() {
-    const updated = state.liveMeta.updatedAt ? formatDate(state.liveMeta.updatedAt) : "brak syncu";
-    const syncingText = state.isSyncing
-      ? "Trwa odswiezanie z Gmaila..."
-      : "Panel czyta dane na zywo z Gmaila przez Apps Script.";
-
-    el.syncMeta.textContent =
-      "Ostatni sync: " +
-      updated +
-      ". Zrodlo: " +
-      state.liveMeta.syncSource +
-      ". " +
-      syncingText;
-    el.syncNowBtn.disabled = state.isSyncing;
-    el.syncNowBtn.textContent = state.isSyncing ? "Odswiezanie..." : "Odswiez z Gmaila";
+    const updated = state.syncMeta.updatedAt ? formatDate(state.syncMeta.updatedAt) : 'brak syncu';
+    el.syncMeta.textContent = `Ostatni sync: ${updated}. Zrodlo: ${state.syncMeta.syncSource}.`;
   }
 
   function renderFilters() {
     const summary = counts();
-    el.filterBar.innerHTML = "";
+    el.filterBar.innerHTML = '';
 
-    FILTERS.forEach((filter) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "filter-chip" + (state.filter === filter.id ? " active" : "");
-      const countValue = filter.id === "all" ? summary.all : summary[filter.id];
-      button.textContent = filter.label + " (" + countValue + ")";
-      button.addEventListener("click", () => {
+    filters.forEach((filter) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `filter-chip${state.filter === filter.id ? ' active' : ''}`;
+      const countValue = filter.id === 'all' ? summary.all : summary[filter.id];
+      button.textContent = `${filter.label} (${countValue})`;
+      button.addEventListener('click', () => {
         state.filter = filter.id;
-        saveUiState();
         render();
       });
       el.filterBar.appendChild(button);
@@ -281,32 +184,34 @@
 
   function renderQueue() {
     const tickets = filteredTickets();
-    el.ticketList.innerHTML = "";
+    el.ticketList.innerHTML = '';
 
     if (!tickets.length) {
-      el.ticketList.innerHTML =
-        '<div class="empty-state"><strong>Brak pasujacych zgloszen.</strong><p class="muted">Zmien filtr albo wpisz inny mail, numer zamowienia lub nazwe figurki.</p></div>';
+      el.ticketList.innerHTML = `
+        <div class="empty-state">
+          <strong>Brak pasujacych zgloszen.</strong>
+          <p class="muted">Zmien filtr albo wpisz inny mail, numer zamowienia lub nazwe figurki.</p>
+        </div>
+      `;
       return;
     }
 
     tickets.forEach((ticket) => {
       const node = el.ticketCardTemplate.content.firstElementChild.cloneNode(true);
-      const statusMeta = STATUS_META[ticket.status] || STATUS_META.new;
+      const meta = statusMeta[ticket.status];
+      node.classList.toggle('active', ticket.id === state.selectedId);
+      node.querySelector('.ticket-name').textContent = ticket.customerName;
+      node.querySelector('.ticket-age').textContent = formatAge(ticket.receivedAt);
+      node.querySelector('.ticket-subject').textContent = ticket.subject;
+      node.querySelector('.ticket-preview').textContent = ticket.preview;
+      node.querySelector('.ticket-order').textContent = ticket.orderNumber || 'brak';
 
-      node.classList.toggle("active", ticket.id === state.selectedId);
-      node.querySelector(".ticket-name").textContent = ticket.customerName;
-      node.querySelector(".ticket-age").textContent = formatAge(ticket.receivedAt);
-      node.querySelector(".ticket-subject").textContent = ticket.subject;
-      node.querySelector(".ticket-preview").textContent = ticket.preview;
-      node.querySelector(".ticket-order").textContent = ticket.orderNumber || "brak";
+      const statusNode = node.querySelector('.ticket-status');
+      statusNode.textContent = ticket.unread ? `${meta.label} • new` : meta.label;
+      statusNode.className = `ticket-status badge ${meta.badgeClass}`.trim();
 
-      const statusNode = node.querySelector(".ticket-status");
-      statusNode.textContent = ticket.unread ? statusMeta.label + " • new" : statusMeta.label;
-      statusNode.className = ("ticket-status badge " + statusMeta.badgeClass).trim();
-
-      node.addEventListener("click", () => {
+      node.addEventListener('click', () => {
         state.selectedId = ticket.id;
-        saveUiState();
         render();
       });
 
@@ -318,18 +223,16 @@
     const ticket = selectedTicket();
 
     if (!ticket) {
-      el.detailView.innerHTML =
-        '<div class="empty-state"><strong>Brak actionable maili.</strong><p class="muted">Kiedy w skrzynce pojawi sie nowy temat klienta, zobaczysz go tutaj.</p></div>';
+      el.detailView.innerHTML = `
+        <div class="empty-state">
+          <strong>Nie wybrano zgloszenia.</strong>
+          <p class="muted">Kliknij sprawe z kolejki po lewej stronie.</p>
+        </div>
+      `;
       return;
     }
 
-    const statusMeta = STATUS_META[ticket.status] || STATUS_META.new;
-    const sendButtonDisabled = canSendTicket(ticket) ? "" : "disabled";
-    const trackingNotice =
-      ticket.needsBaselinker && !ticket.baselinkerDone
-        ? '<p class="composer-note">Najpierw sprawdz BaseLinker albo przygotuj dosylke, dopiero potem kliknij Wyslij maila.</p>'
-        : '<p class="composer-note">Mozesz zapisac draft, skopiowac go albo wyslac maila bezposrednio z panelu.</p>';
-
+    const meta = statusMeta[ticket.status];
     el.detailView.innerHTML = `
       <article class="customer-card">
         <div class="detail-top">
@@ -338,9 +241,9 @@
             <h2>${escapeHtml(ticket.subject)}</h2>
           </div>
           <div class="detail-badges">
-            <span class="badge ${statusMeta.badgeClass}">${statusMeta.label}</span>
-            <span class="badge">${escapeHtml(ticket.source || "Gmail")}</span>
-            <span class="badge">${escapeHtml(ticket.language || "EN")}</span>
+            <span class="badge ${meta.badgeClass}">${meta.label}</span>
+            <span class="badge">${escapeHtml(ticket.source || 'Gmail')}</span>
+            <span class="badge">${escapeHtml(ticket.language || 'EN')}</span>
           </div>
         </div>
 
@@ -352,13 +255,13 @@
           </div>
           <div>
             <span class="mini-label">Numer zamowienia</span>
-            <strong>${escapeHtml(ticket.orderNumber || "brak")}</strong>
+            <strong>${escapeHtml(ticket.orderNumber || 'brak')}</strong>
             <p>${formatDate(ticket.receivedAt)}</p>
           </div>
           <div>
             <span class="mini-label">BaseLinker check</span>
-            <strong>${ticket.needsBaselinker ? "Tak" : "Nie"}</strong>
-            <p>${ticket.baselinkerDone ? "Oznaczone jako zrobione" : "Otwarte"}</p>
+            <strong>${ticket.needsBaselinker ? 'Tak' : 'Nie'}</strong>
+            <p>${ticket.baselinkerDone ? 'Oznaczone jako zrobione' : 'Otwarte'}</p>
           </div>
         </div>
       </article>
@@ -369,7 +272,7 @@
           <h3 class="summary-title">${escapeHtml(ticket.summary)}</h3>
         </div>
         <div class="tag-row">
-          ${(ticket.tags || []).map((tag) => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}
+          ${ticket.tags.map((tag) => `<span class="chip">${escapeHtml(tag)}</span>`).join('')}
         </div>
       </article>
 
@@ -386,24 +289,22 @@
       <article class="composer-card">
         <label for="draftEditor">
           <span class="mini-label">Proponowana odpowiedz</span>
-          <textarea id="draftEditor"></textarea>
+          <textarea id="draftEditor">${escapeHtml(ticket.draft || '')}</textarea>
         </label>
 
         <div class="composer-actions">
-          <button id="saveDraftBtn" type="button" class="action-btn">Zapisz draft</button>
-          <button id="approveBtn" type="button" class="action-btn primary">Oznacz jako gotowe</button>
-          <button id="copyBtn" type="button" class="action-btn">Kopiuj odpowiedz</button>
-          <button id="needsBlBtn" type="button" class="action-btn">Oznacz: trzeba BaseLinker</button>
-          <button id="blDoneBtn" type="button" class="action-btn secondary">${ticket.baselinkerDone ? "Cofnij BaseLinker done" : "BaseLinker zrobiony"}</button>
-          <button id="markSentBtn" type="button" class="action-btn">Oznacz jako wyslane</button>
-          <button id="sendBtn" type="button" class="action-btn primary" ${sendButtonDisabled}>${state.isSending ? "Wysylanie..." : "Wyslij maila"}</button>
+          <button type="button" class="action-btn primary" data-action="approve">Zatwierdz draft</button>
+          <button type="button" class="action-btn" data-action="copy">Kopiuj odpowiedz</button>
+          <button type="button" class="action-btn" data-action="needs-baselinker">Oznacz: trzeba BaseLinker</button>
+          <button type="button" class="action-btn secondary" data-action="baselinker-done">${ticket.baselinkerDone ? 'BaseLinker zrobiony' : 'Oznacz BaseLinker jako zrobiony'}</button>
+          <button type="button" class="action-btn" data-action="mark-sent">Oznacz jako wyslane</button>
+          <button type="button" class="action-btn" disabled>Wyslij maila</button>
         </div>
-        ${trackingNotice}
       </article>
 
       <article class="timeline-card">
         <p class="mini-label">Historia watku</p>
-        ${(ticket.timeline || [])
+        ${ticket.timeline
           .map(
             (item) => `
               <div class="timeline-item">
@@ -415,88 +316,49 @@
               </div>
             `
           )
-          .join("")}
+          .join('')}
       </article>
     `;
 
-    const draftEditor = document.getElementById("draftEditor");
-    draftEditor.value = ticket.draft || "";
-
-    draftEditor.addEventListener("input", (event) => {
-      applyLocalTicketChanges(ticket.id, { draft: event.target.value });
+    document.getElementById('draftEditor').addEventListener('input', (event) => {
+      ticket.draft = event.target.value;
     });
 
-    document.getElementById("saveDraftBtn").addEventListener("click", async () => {
-      await persistTicketChanges(ticket.id, { draft: draftEditor.value }, "Draft zapisany.");
-    });
-
-    document.getElementById("approveBtn").addEventListener("click", async () => {
-      await persistTicketChanges(
-        ticket.id,
-        {
-          draft: draftEditor.value,
-          status: "ready",
-          unread: false,
-          sendEnabled: true,
-        },
-        "Draft oznaczony jako gotowy."
-      );
-    });
-
-    document.getElementById("copyBtn").addEventListener("click", async () => {
+    el.detailView.querySelector('[data-action="copy"]').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(draftEditor.value);
-        toast("Odpowiedz skopiowana do schowka.");
-      } catch (error) {
-        toast("Nie udalo sie skopiowac. Skopiuj tekst recznie.");
+        await navigator.clipboard.writeText(ticket.draft || '');
+        toast('Odpowiedz skopiowana do schowka.');
+      } catch {
+        toast('Nie udalo sie skopiowac. Skopiuj tekst recznie.');
       }
     });
 
-    document.getElementById("needsBlBtn").addEventListener("click", async () => {
-      await persistTicketChanges(
-        ticket.id,
-        {
-          draft: draftEditor.value,
-          status: "needs-baselinker",
-          needsBaselinker: true,
-          baselinkerDone: false,
-          sendEnabled: false,
-          unread: false,
-        },
-        "Sprawa oznaczona jako wymagajaca BaseLinkera."
-      );
+    el.detailView.querySelector('[data-action="approve"]').addEventListener('click', () => {
+      ticket.status = 'ready';
+      ticket.unread = false;
+      render();
+      toast('Draft zatwierdzony.');
     });
 
-    document.getElementById("blDoneBtn").addEventListener("click", async () => {
-      const nextDone = !ticket.baselinkerDone;
-      await persistTicketChanges(
-        ticket.id,
-        {
-          draft: draftEditor.value,
-          baselinkerDone: nextDone,
-          needsBaselinker: !nextDone,
-          sendEnabled: nextDone,
-          status: nextDone ? "ready" : "needs-baselinker",
-          unread: false,
-        },
-        nextDone ? "BaseLinker oznaczony jako zrobiony." : "Cofnieto znacznik BaseLinkera."
-      );
+    el.detailView.querySelector('[data-action="needs-baselinker"]').addEventListener('click', () => {
+      ticket.status = 'needs-baselinker';
+      ticket.needsBaselinker = true;
+      ticket.unread = false;
+      render();
+      toast('Sprawa oznaczona jako wymagajaca BaseLinkera.');
     });
 
-    document.getElementById("markSentBtn").addEventListener("click", async () => {
-      await persistTicketChanges(
-        ticket.id,
-        {
-          draft: draftEditor.value,
-          status: "sent",
-          unread: false,
-        },
-        "Sprawa oznaczona jako wyslana."
-      );
+    el.detailView.querySelector('[data-action="baselinker-done"]').addEventListener('click', () => {
+      ticket.baselinkerDone = !ticket.baselinkerDone;
+      render();
+      toast(ticket.baselinkerDone ? 'BaseLinker oznaczony jako zrobiony.' : 'Cofnieto znacznik BaseLinkera.');
     });
 
-    document.getElementById("sendBtn").addEventListener("click", async () => {
-      await sendReply(ticket.id, draftEditor.value);
+    el.detailView.querySelector('[data-action="mark-sent"]').addEventListener('click', () => {
+      ticket.status = 'sent';
+      ticket.unread = false;
+      render();
+      toast('Sprawa oznaczona jako wyslana.');
     });
   }
 
@@ -504,25 +366,25 @@
     const ticket = selectedTicket();
 
     if (!ticket) {
-      el.opsSummary.innerHTML = '<div class="ops-empty"><p class="muted">Wybierz zgloszenie z kolejki.</p></div>';
-      el.opsChecklist.innerHTML = "";
+      el.opsSummary.innerHTML = `<div class="ops-empty"><p class="muted">Wybierz zgloszenie z kolejki.</p></div>`;
+      el.opsChecklist.innerHTML = '';
       return;
     }
 
-    const statusMeta = STATUS_META[ticket.status] || STATUS_META.new;
+    const meta = statusMeta[ticket.status];
     const opsItems = [];
 
     if (ticket.unread) {
-      opsItems.push("Masz nowy mail klienta. Najpierw przeczytaj draft i zdecyduj czy go puszczasz.");
+      opsItems.push('Masz nowy mail klienta. Najpierw przeczytaj draft i zdecyduj czy go puszczasz.');
     }
     if (ticket.needsBaselinker && !ticket.baselinkerDone) {
-      opsItems.push("Najpierw reczna akcja w BaseLinkerze albo na produkcji, dopiero potem finalny mail.");
+      opsItems.push('Najpierw reczna akcja w BaseLinkerze albo na produkcji, dopiero potem finalny mail.');
     }
-    if (ticket.status === "ready") {
-      opsItems.push("Draft jest gotowy. Mozesz go wyslac prosto z panelu albo skopiowac recznie.");
+    if (ticket.status === 'ready') {
+      opsItems.push('Draft jest gotowy. Mozesz go skopiowac i wyslac recznie albo czekac na krok 2.');
     }
-    if (ticket.status === "sent") {
-      opsItems.push("W panelu sprawa jest zamknieta. Czekaj tylko na kolejna odpowiedz klienta.");
+    if (ticket.status === 'sent') {
+      opsItems.push('W panelu sprawa jest zamknieta. Czekaj tylko na kolejna odpowiedz klienta.');
     }
 
     el.opsSummary.innerHTML = `
@@ -531,9 +393,9 @@
         <strong>${escapeHtml(ticket.customerName)}</strong>
         <p>${escapeHtml(ticket.subject)}</p>
         <div class="ops-pills">
-          <span class="badge ${statusMeta.badgeClass}">${statusMeta.label}</span>
-          <span class="badge">${escapeHtml(ticket.orderNumber || "brak")}</span>
-          <span class="badge">${ticket.baselinkerDone ? "BL done" : "BL open"}</span>
+          <span class="badge ${meta.badgeClass}">${meta.label}</span>
+          <span class="badge">${escapeHtml(ticket.orderNumber || 'brak')}</span>
+          <span class="badge">${ticket.baselinkerDone ? 'BL done' : 'BL open'}</span>
         </div>
       </div>
       <div class="ops-card">
@@ -543,7 +405,26 @@
       </div>
     `;
 
-    el.opsChecklist.innerHTML = opsItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    el.opsChecklist.innerHTML = opsItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+  }
+
+  function escapeHtml(text) {
+    return String(text || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+
+  function toast(message) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+
+    const node = document.createElement('div');
+    node.className = 'toast';
+    node.textContent = message;
+    document.body.appendChild(node);
+    window.setTimeout(() => node.remove(), 2400);
   }
 
   function render() {
@@ -556,178 +437,41 @@
     renderOpsPanel();
   }
 
-  function applyLocalTicketChanges(ticketId, changes) {
-    state.tickets = state.tickets.map((ticket) => (ticket.id === ticketId ? { ...ticket, ...changes } : ticket));
-  }
-
-  async function apiGetTickets(forceRefresh) {
-    const url = new URL(apiBaseUrl);
-    url.searchParams.set("action", "tickets");
-    if (forceRefresh) {
-      url.searchParams.set("force", "1");
-    }
-
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      credentials: "same-origin",
-    });
-
-    if (!response.ok) {
-      throw new Error("Nie udalo sie pobrac kolejki z Gmaila.");
-    }
-
-    return response.json();
-  }
-
-  async function apiPost(action, payload) {
-    const url = new URL(apiBaseUrl);
-    url.searchParams.set("action", action);
-
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "same-origin",
-      body: JSON.stringify(payload || {}),
-    });
-
-    if (!response.ok) {
-      throw new Error("Nie udalo sie wykonac akcji " + action + ".");
-    }
-
-    const data = await response.json();
-    if (!data.ok) {
-      throw new Error(data.error || "Serwer zwrocil blad.");
-    }
-
-    return data;
-  }
-
-  async function persistTicketChanges(ticketId, changes, successMessage) {
-    applyLocalTicketChanges(ticketId, changes);
-    render();
-
-    try {
-      const response = await apiPost("updateTicket", {
-        ticketId: ticketId,
-        changes: changes,
-      });
-      applyPayload(response.payload);
-      saveUiState();
-      render();
-      if (successMessage) {
-        toast(successMessage);
-      }
-    } catch (error) {
-      toast(error.message || "Nie udalo sie zapisac zmian.");
-      await refreshLiveData({ force: true, silent: true });
-    }
-  }
-
-  async function sendReply(ticketId, body) {
-    const ticket = selectedTicket();
-
-    if (!ticket) return;
-    if (!String(body || "").trim()) {
-      toast("Najpierw wpisz albo zostaw draft odpowiedzi.");
-      return;
-    }
-    if (ticket.needsBaselinker && !ticket.baselinkerDone) {
-      toast("Ta sprawa nadal wymaga BaseLinkera przed wysylka.");
-      return;
-    }
-
-    state.isSending = true;
-    render();
-
-    try {
-      const response = await apiPost("reply", {
-        ticketId: ticketId,
-        body: body,
-      });
-      applyPayload(response.payload);
-      saveUiState();
-      render();
-      toast("Mail zostal wyslany.");
-    } catch (error) {
-      toast(error.message || "Nie udalo sie wyslac maila.");
-      await refreshLiveData({ force: true, silent: true });
-    } finally {
-      state.isSending = false;
-      render();
-    }
-  }
-
-  async function refreshLiveData(options) {
-    const settings = options || {};
-    if (state.isSyncing) return;
-
-    state.isSyncing = true;
-    renderSyncMeta();
-
-    try {
-      const payload = await apiGetTickets(Boolean(settings.force));
-      applyPayload(payload);
-      saveUiState();
-      render();
-      if (!settings.silent) {
-        toast("Dane z Gmaila odswiezone.");
-      }
-    } catch (error) {
-      renderSyncMeta();
-      if (!settings.silent) {
-        toast(error.message || "Nie udalo sie odswiezyc kolejki.");
-      }
-    } finally {
-      state.isSyncing = false;
-      renderSyncMeta();
-    }
-  }
-
-  function toast(message) {
-    const existing = document.querySelector(".toast");
-    if (existing) existing.remove();
-
-    const node = document.createElement("div");
-    node.className = "toast";
-    node.textContent = message;
-    document.body.appendChild(node);
-
-    window.setTimeout(() => node.remove(), 2400);
+  function loadData() {
+    state.isLoading = true;
+    renderAlert();
+    google.script.run
+      .withSuccessHandler((payload) => {
+        state.tickets = payload.tickets || [];
+        state.syncMeta = {
+          updatedAt: payload.updatedAt || null,
+          syncSource: payload.syncSource || 'gmail',
+          ticketCount: state.tickets.length,
+        };
+        state.selectedId = state.tickets[0]?.id || null;
+        state.isLoading = false;
+        render();
+      })
+      .withFailureHandler((error) => {
+        state.isLoading = false;
+        el.alertHeadline.textContent = 'Blad ladowania dashboardu';
+        el.alertSubline.textContent = error.message || 'Nie udalo sie pobrac danych z Gmaila.';
+      })
+      .getDashboardPayload();
   }
 
   function attachEvents() {
-    el.searchInput.value = state.search;
-
-    el.searchInput.addEventListener("input", (event) => {
+    el.searchInput.addEventListener('input', (event) => {
       state.search = event.target.value;
-      saveUiState();
       renderQueue();
     });
 
-    el.resetDemoBtn.addEventListener("click", async () => {
-      try {
-        const response = await apiPost("resetOverrides");
-        applyPayload(response.payload);
-        saveUiState();
-        render();
-        toast("Wyczyszczono zapisane statusy i drafty.");
-      } catch (error) {
-        toast(error.message || "Nie udalo sie zresetowac zmian.");
-      }
-    });
-
-    el.syncNowBtn.addEventListener("click", async () => {
-      await refreshLiveData({ force: true });
+    el.refreshBtn.addEventListener('click', () => {
+      loadData();
+      toast('Odswiezam dane z Gmaila...');
     });
   }
 
-  loadUiState();
-  applyPayload(bootstrap.initialPayload || { tickets: [] });
   attachEvents();
-  render();
-  window.setInterval(() => {
-    refreshLiveData({ silent: true });
-  }, 60 * 1000);
+  loadData();
 </script>

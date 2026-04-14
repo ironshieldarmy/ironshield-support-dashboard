@@ -19,10 +19,6 @@
     box-sizing: border-box;
   }
 
-  html {
-    scroll-behavior: smooth;
-  }
-
   body {
     margin: 0;
     min-height: 100vh;
@@ -31,7 +27,7 @@
       radial-gradient(circle at top left, rgba(253, 224, 160, 0.55), transparent 24%),
       radial-gradient(circle at 82% 8%, rgba(38, 166, 154, 0.18), transparent 22%),
       linear-gradient(180deg, #f9f3e7 0%, #efe6d8 100%);
-    font-family: "Space Grotesk", sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
   }
 
   .terrain {
@@ -96,7 +92,7 @@
   }
 
   .hero::after {
-    content: "";
+    content: '';
     position: absolute;
     inset: auto -10% -30% auto;
     width: 320px;
@@ -113,7 +109,7 @@
   .mini-label {
     margin: 0;
     color: var(--muted);
-    font-family: "IBM Plex Mono", monospace;
+    font-family: 'IBM Plex Mono', monospace;
     font-size: 0.78rem;
     letter-spacing: 0.04em;
   }
@@ -153,7 +149,6 @@
   }
 
   .alert-box {
-    position: relative;
     display: grid;
     gap: 14px;
     align-content: start;
@@ -193,33 +188,6 @@
     }
   }
 
-  .hero-meta {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-
-  .hero-meta div,
-  .ops-card,
-  .summary-strip,
-  .cta-card,
-  .composer-card,
-  .timeline-card,
-  .customer-card {
-    border: 1px solid rgba(217, 204, 186, 0.92);
-    border-radius: 18px;
-    background: rgba(255, 252, 247, 0.88);
-  }
-
-  .hero-meta div {
-    padding: 12px;
-  }
-
-  .hero-meta strong {
-    display: block;
-    margin-top: 8px;
-  }
-
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -253,11 +221,6 @@
   .detail-panel,
   .ops-panel {
     min-height: 78vh;
-  }
-
-  .queue-panel,
-  .detail-panel,
-  .ops-panel {
     display: grid;
     gap: 16px;
     align-content: start;
@@ -268,13 +231,6 @@
     justify-content: space-between;
     align-items: start;
     gap: 12px;
-  }
-
-  .queue-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: end;
   }
 
   .search-box,
@@ -337,15 +293,6 @@
     border-color: transparent;
   }
 
-  .ghost-btn {
-    background: rgba(255, 255, 255, 0.66);
-  }
-
-  .ghost-btn:disabled {
-    opacity: 0.6;
-    cursor: wait;
-  }
-
   .ticket-list {
     display: grid;
     gap: 10px;
@@ -393,7 +340,7 @@
   .badge,
   .status-pill,
   .chip {
-    font-family: "IBM Plex Mono", monospace;
+    font-family: 'IBM Plex Mono', monospace;
     font-size: 0.76rem;
   }
 
@@ -466,6 +413,9 @@
   .composer-card,
   .timeline-card,
   .ops-card {
+    border: 1px solid rgba(217, 204, 186, 0.92);
+    border-radius: 18px;
+    background: rgba(255, 252, 247, 0.88);
     padding: 16px;
   }
 
@@ -560,7 +510,7 @@
 
   .timeline-time {
     color: var(--muted);
-    font-family: "IBM Plex Mono", monospace;
+    font-family: 'IBM Plex Mono', monospace;
     font-size: 0.76rem;
     white-space: nowrap;
   }
@@ -612,8 +562,7 @@
     .hero,
     .stats-grid,
     .customer-grid,
-    .detail-grid,
-    .hero-meta {
+    .detail-grid {
       grid-template-columns: 1fr;
     }
   }

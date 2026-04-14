@@ -12,12 +12,55 @@
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="locked">
     <div class="terrain terrain-one"></div>
     <div class="terrain terrain-two"></div>
     <div class="terrain terrain-three"></div>
 
-    <main class="shell">
+    <div id="authGate" class="auth-gate">
+      <section class="auth-card" aria-labelledby="authTitle">
+        <p class="eyebrow">IronShield Operator Gate</p>
+        <h2 id="authTitle">Wejście do Support War Room</h2>
+        <p class="auth-lead">
+          Ten widok jest przeznaczony dla operatora sklepu. Po odblokowaniu zobaczysz kolejkę zgłoszeń,
+          draft odpowiedzi oraz checklistę do BaseLinkera.
+        </p>
+
+        <div class="auth-grid">
+          <article class="auth-info auth-info-danger">
+            <p class="mini-label">Najpierw</p>
+            <strong>Nowe maile i pilne reklamacje</strong>
+          </article>
+          <article class="auth-info auth-info-warn">
+            <p class="mini-label">Potem</p>
+            <strong>Dosyłki i ruchy w BaseLinkerze</strong>
+          </article>
+          <article class="auth-info auth-info-accent">
+            <p class="mini-label">Na końcu</p>
+            <strong>Gotowe drafty do skopiowania</strong>
+          </article>
+        </div>
+
+        <label class="auth-field" for="passcodeInput">
+          <span class="mini-label">Hasło operatora</span>
+          <input
+            id="passcodeInput"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Wpisz hasło i wejdź do panelu"
+          />
+        </label>
+
+        <div class="auth-actions">
+          <button id="unlockBtn" class="action-btn primary auth-submit" type="button">Odblokuj panel</button>
+          <p id="authMessage" class="auth-message muted">
+            To jest lekka blokada front-endowa dla szybkiego ograniczenia dostępu do panelu.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <main id="appShell" class="shell">
       <header class="panel hero">
         <div class="hero-copy">
           <p class="eyebrow">IronShield HQ</p>
@@ -29,7 +72,10 @@
         </div>
 
         <div class="alert-box">
-          <p class="mini-label">Powiadomienia</p>
+          <div class="hero-tools">
+            <p class="mini-label">Powiadomienia</p>
+            <button id="lockPanelBtn" class="ghost-btn lock-btn" type="button">Zablokuj panel</button>
+          </div>
           <div class="alert-headline">
             <span class="pulse-dot"></span>
             <strong id="alertHeadline">Ladowanie...</strong>
@@ -59,6 +105,24 @@
       </header>
 
       <section id="statsGrid" class="stats-grid"></section>
+
+      <section class="priority-guide">
+        <article class="guide-card guide-card-danger">
+          <p class="mini-label">Strefa czerwona</p>
+          <strong>Nowe maile i świeże zgłoszenia</strong>
+          <p>Zaczynasz tutaj. To są sprawy, które najbardziej potrzebują pierwszego ruchu.</p>
+        </article>
+        <article class="guide-card guide-card-warn">
+          <p class="mini-label">Strefa pomarańczowa</p>
+          <strong>BaseLinker, dosyłki i reklamacje</strong>
+          <p>Tu panel mówi Ci dokładnie co ręcznie ustawić, zanim poleci finalna odpowiedź.</p>
+        </article>
+        <article class="guide-card guide-card-accent">
+          <p class="mini-label">Strefa turkusowa</p>
+          <strong>Gotowe drafty i zamknięcie sprawy</strong>
+          <p>Na końcu kopiujesz lub domykasz temat, kiedy wszystko po Twojej stronie już jest ogarnięte.</p>
+        </article>
+      </section>
 
       <section class="workspace">
         <aside class="panel queue-panel">
