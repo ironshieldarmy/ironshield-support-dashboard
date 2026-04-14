@@ -23,8 +23,8 @@
           <p class="eyebrow">IronShield HQ</p>
           <h1>Customer Support War Room</h1>
           <p class="lead">
-            Jeden panel na nowe maile klientów, draft odpowiedzi, checklistę do BaseLinkera
-            i ręczne akcje dla produkcji.
+            Publiczny dashboard demonstracyjny dla Twojego procesu supportowego:
+            kolejka spraw, draft odpowiedzi i checklista do BaseLinkera bez backendu.
           </p>
         </div>
 
@@ -35,24 +35,24 @@
             <strong id="alertHeadline">Ladowanie...</strong>
           </div>
           <p id="alertSubline" class="muted">
-            Watcher w Codexie nadal może wpadać z alertami co 30 minut.
+            To jest bezpieczna, hostowana wersja demo bez bezpośredniego dostępu do Gmaila.
           </p>
           <p id="syncMeta" class="muted">
-            Live sync z Gmaila laduje dane do panelu.
+            Panel odczytuje publiczny feed z repozytorium.
           </p>
 
           <div class="hero-meta">
             <div>
-              <span class="mini-label">Kanał teraz</span>
-              <strong>Codex thread</strong>
+              <span class="mini-label">Tryb teraz</span>
+              <strong>GitHub Pages demo</strong>
             </div>
             <div>
-              <span class="mini-label">Dashboard MVP</span>
+              <span class="mini-label">Co pokazuje</span>
               <strong>Queue + draft + CTA</strong>
             </div>
             <div>
               <span class="mini-label">Następny etap</span>
-              <strong>Gmail + BaseLinker hook</strong>
+              <strong>Prywatny backend + BaseLinker</strong>
             </div>
           </div>
         </div>
@@ -68,14 +68,14 @@
               <h2>Kolejka klientow</h2>
             </div>
             <div class="queue-actions">
-              <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez z Gmaila</button>
+              <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez dane</button>
               <button id="resetDemoBtn" class="ghost-btn" type="button">Reset lokalnych zmian</button>
             </div>
           </div>
 
           <label class="search-box" for="searchInput">
             <span class="mini-label">Szukaj po mailu, numerze albo figurce</span>
-            <input id="searchInput" type="search" placeholder="np. Renmaeth / 3690 / Jason" />
+            <input id="searchInput" type="search" placeholder="np. Moonblade / 4108 / Aria" />
           </label>
 
           <div id="filterBar" class="filter-bar" aria-label="Filtry kolejek"></div>
@@ -102,10 +102,10 @@
           <div class="ops-card roadmap">
             <p class="mini-label">Następny etap integracji</p>
             <ul class="roadmap-list">
-              <li>Webhook z watchera do tego panelu zamiast tylko powiadomień w wątku.</li>
-              <li>Przycisk `Wyślij maila` spięty z reply w Gmailu po thread ID.</li>
-              <li>Automatyczne tworzenie dosyłki / replacementu w BaseLinkerze.</li>
+              <li>Prywatny backend do czytania Gmaila poza publicznym repo.</li>
+              <li>Automatyczne tworzenie dosyłki lub replacementu w BaseLinkerze.</li>
               <li>Status paczki zaciągany z BaseLinkera do widoku zgłoszenia.</li>
+              <li>Wysyłka maila wraca dopiero po spięciu prywatnego API.</li>
             </ul>
           </div>
         </aside>
