@@ -1,3 +1,4 @@
+// Publiczny hash do lekkiej blokady front-endowej. Nie traktuj go jako prawdziwego zabezpieczenia.
 window.__IRONSHIELD_SUPPORT_CONFIG__ = {
   mode: "demo",
   remoteDataUrl: "",

@@ -49,7 +49,9 @@ Po chwili dashboard będzie dostępny pod adresem w stylu:
 - Nie wrzucaj prawdziwych maili klientów, numerów zamówień ani danych z Gmaila do publicznego repozytorium.
 - `support-data.js` w tej wersji ma zawierać tylko dane demo albo zanonimizowane przykłady.
 - Prawdziwy live support powinien wrócić dopiero po postawieniu prywatnego backendu.
-- Nie wkładaj żadnych sekretów, tokenów ani haseł do `support-config.js`, bo to plik publiczny.
+- Nie wkładaj żadnych sekretów, tokenów ani prawdziwych haseł do `support-config.js`, bo to plik publiczny.
+- Jeśli używasz blokady wejścia w `support-config.js`, traktuj ją tylko jako publiczny front-end gate do szybkiego ograniczenia dostępu, a nie jako realne zabezpieczenie.
+- Prawdziwa ochrona tego panelu wymaga prywatnego hostingu albo serwerowego logowania.
 
 ## Cel kolejnego etapu
 
