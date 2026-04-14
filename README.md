@@ -17,6 +17,18 @@ Publiczna wersja:
 - pokazuje bezpieczne, fikcyjne dane demonstracyjne
 - nie czyta Gmaila i nie wysyła maili bezpośrednio
 
+## Konfiguracja trybu pracy
+
+- `support-config.js` steruje tym, czy dashboard działa jako publiczne demo, czy czyta prywatne API.
+- Domyślnie ustawione jest:
+  - `mode: "demo"`
+  - `remoteDataUrl: ""`
+- Kiedy będziemy przełączać dashboard na prawdziwy backend, zmienimy tylko:
+  - `mode: "remote"`
+  - `remoteDataUrl` na adres prywatnego endpointu JSON
+
+Dokładny kontrakt odpowiedzi backendu jest opisany w [private-api-contract.md](/Users/User/Documents/New project/private-api-contract.md).
+
 ## GitHub Pages
 
 1. Wejdź do repozytorium na GitHubie.
@@ -37,6 +49,7 @@ Po chwili dashboard będzie dostępny pod adresem w stylu:
 - Nie wrzucaj prawdziwych maili klientów, numerów zamówień ani danych z Gmaila do publicznego repozytorium.
 - `support-data.js` w tej wersji ma zawierać tylko dane demo albo zanonimizowane przykłady.
 - Prawdziwy live support powinien wrócić dopiero po postawieniu prywatnego backendu.
+- Nie wkładaj żadnych sekretów, tokenów ani haseł do `support-config.js`, bo to plik publiczny.
 
 ## Cel kolejnego etapu
 

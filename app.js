@@ -1,6 +1,16 @@
 const UI_STORAGE_KEY = "ironshield_support_ui_v3";
 const OVERRIDES_STORAGE_KEY = "ironshield_support_overrides_v3";
 const LIVE_DATA_SCRIPT = "support-data.js";
+const DEFAULT_CONFIG = {
+  mode: "demo",
+  remoteDataUrl: "",
+  refreshIntervalMs: 60 * 1000,
+  labels: {
+    mode: "GitHub Pages demo",
+    features: "Queue + draft + CTA",
+    nextStep: "Prywatny backend + BaseLinker",
+  },
+};
 
 const FILTERS = [
   { id: "all", label: "Wszystko" },
@@ -66,6 +76,7 @@ const fallbackTickets = [
 ];
 
 const state = {
+  config: null,
   filter: "all",
   search: "",
   selectedId: null,
@@ -92,12 +103,38 @@ const el = {
   syncMeta: document.getElementById("syncMeta"),
   alertHeadline: document.getElementById("alertHeadline"),
   alertSubline: document.getElementById("alertSubline"),
+  runtimeModeLabel: document.getElementById("runtimeModeLabel"),
+  runtimeFeaturesLabel: document.getElementById("runtimeFeaturesLabel"),
+  runtimeNextStepLabel: document.getElementById("runtimeNextStepLabel"),
   statCardTemplate: document.getElementById("statCardTemplate"),
   ticketCardTemplate: document.getElementById("ticketCardTemplate"),
 };
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function runtimeConfig() {
+  const raw = window.__IRONSHIELD_SUPPORT_CONFIG__ || {};
+  const labels = raw.labels && typeof raw.labels === "object" ? raw.labels : {};
+
+  return {
+    mode: raw.mode === "remote" ? "remote" : "demo",
+    remoteDataUrl: typeof raw.remoteDataUrl === "string" ? raw.remoteDataUrl.trim() : "",
+    refreshIntervalMs:
+      Number.isFinite(raw.refreshIntervalMs) && raw.refreshIntervalMs >= 15 * 1000
+        ? raw.refreshIntervalMs
+        : DEFAULT_CONFIG.refreshIntervalMs,
+    labels: {
+      mode: labels.mode || DEFAULT_CONFIG.labels.mode,
+      features: labels.features || DEFAULT_CONFIG.labels.features,
+      nextStep: labels.nextStep || DEFAULT_CONFIG.labels.nextStep,
+    },
+  };
+}
+
+function usesRemoteApi() {
+  return state.config.mode === "remote" && Boolean(state.config.remoteDataUrl);
 }
 
 function loadUiState() {
@@ -302,7 +339,9 @@ function renderAlert() {
 
   if (!unreadTickets.length) {
     el.alertSubline.textContent =
-      "To publiczna wersja demo. Nowe dane pojawia sie dopiero po aktualizacji feedu w repozytorium.";
+      usesRemoteApi()
+        ? "Panel jest ustawiony na prywatne API. Gdy backend zwroci nowe sprawy, pojawia sie tutaj."
+        : "To publiczna wersja demo. Nowe dane pojawia sie dopiero po aktualizacji feedu w repozytorium.";
     return;
   }
 
@@ -315,11 +354,21 @@ function renderAlert() {
 function renderSyncMeta() {
   const updated = state.liveMeta.updatedAt ? formatDate(state.liveMeta.updatedAt) : "brak syncu";
   const syncingText = state.isSyncing
-    ? "Trwa odswiezanie feedu demo..."
-    : "Panel czyta publiczny plik support-data.js.";
+    ? usesRemoteApi()
+      ? "Trwa odswiezanie prywatnego API..."
+      : "Trwa odswiezanie feedu demo..."
+    : usesRemoteApi()
+      ? "Panel czyta prywatny endpoint JSON."
+      : "Panel czyta publiczny plik support-data.js.";
   el.syncMeta.textContent = `Ostatni sync: ${updated}. Zrodlo: ${state.liveMeta.syncSource}. ${syncingText}`;
   el.syncNowBtn.disabled = state.isSyncing;
   el.syncNowBtn.textContent = state.isSyncing ? "Odswiezanie..." : "Odswiez dane";
+}
+
+function renderRuntimeLabels() {
+  el.runtimeModeLabel.textContent = state.config.labels.mode;
+  el.runtimeFeaturesLabel.textContent = state.config.labels.features;
+  el.runtimeNextStepLabel.textContent = state.config.labels.nextStep;
 }
 
 function renderFilters() {
@@ -611,6 +660,7 @@ function escapeHtml(text) {
 }
 
 function render() {
+  renderRuntimeLabels();
   renderStats();
   renderAlert();
   renderSyncMeta();
@@ -620,11 +670,52 @@ function render() {
   renderOpsPanel();
 }
 
+function applyPayloadFromRemote(rawPayload) {
+  applyPayload(rawPayload);
+  saveUiState();
+  render();
+}
+
+function fetchRemotePayload() {
+  return fetch(state.config.remoteDataUrl, {
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`remote_status_${response.status}`);
+    }
+
+    return response.json();
+  });
+}
+
 function refreshLiveData({ silent = false } = {}) {
   if (state.isSyncing) return;
 
   state.isSyncing = true;
   renderSyncMeta();
+
+  if (usesRemoteApi()) {
+    fetchRemotePayload()
+      .then((payload) => {
+        state.isSyncing = false;
+        applyPayloadFromRemote(payload);
+        if (!silent) {
+          toast("Dane z prywatnego API odswiezone.");
+        }
+      })
+      .catch(() => {
+        state.isSyncing = false;
+        renderSyncMeta();
+        if (!silent) {
+          toast("Nie udalo sie pobrac danych z prywatnego API.");
+        }
+      });
+
+    return;
+  }
 
   const staleRuntimeScripts = document.querySelectorAll('script[data-role="support-data-runtime"]');
   staleRuntimeScripts.forEach((script) => script.remove());
@@ -680,7 +771,11 @@ function attachEvents() {
 
 loadUiState();
 loadOverrides();
-applyPayload(window.__IRONSHIELD_SUPPORT_DATA__);
+state.config = runtimeConfig();
+applyPayload(usesRemoteApi() ? null : window.__IRONSHIELD_SUPPORT_DATA__);
 attachEvents();
 render();
-window.setInterval(() => refreshLiveData({ silent: true }), 60 * 1000);
+if (usesRemoteApi()) {
+  refreshLiveData({ silent: true });
+}
+window.setInterval(() => refreshLiveData({ silent: true }), state.config.refreshIntervalMs);
