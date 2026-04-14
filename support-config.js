@@ -5,7 +5,7 @@ window.__IRONSHIELD_SUPPORT_CONFIG__ = {
   refreshIntervalMs: 60 * 1000,
   auth: {
     enabled: true,
-    passcodeHash: "5bdc0c998734947f2e1aa4058c2eeafcd72225e221645ab1521068165155ded0",
+    passcodeHash: "fccc822678a506bd0e93ff75239c5f008a14941a1585f8d09b1c1184a67606c3",
   },
   labels: {
     mode: "GitHub Pages demo",
