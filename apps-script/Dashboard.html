@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IronShield Army - Support War Room</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <?!= include('Stylesheet'); ?>
+  </head>
+  <body>
+    <div class="terrain terrain-one"></div>
+    <div class="terrain terrain-two"></div>
+    <div class="terrain terrain-three"></div>
+
+    <main class="shell">
+      <header class="panel hero">
+        <div class="hero-copy">
+          <p class="eyebrow">IronShield HQ</p>
+          <h1>Customer Support War Room</h1>
+          <p class="lead">
+            Darmowy panel supportowy zasilany z Gmaila przez Google Apps Script. Jedno
+            miejsce na nowe maile, draft odpowiedzi, checklistę do BaseLinkera i wysyłkę
+            maili bez localhosta.
+          </p>
+        </div>
+
+        <div class="alert-box">
+          <p class="mini-label">Powiadomienia</p>
+          <div class="alert-headline">
+            <span class="pulse-dot"></span>
+            <strong id="alertHeadline">Ladowanie...</strong>
+          </div>
+          <p id="alertSubline" class="muted">
+            Panel sprawdza aktualna kolejke z Gmaila i pokazuje tylko actionable watki.
+          </p>
+          <p id="syncMeta" class="muted">Ladowanie danych z Apps Script...</p>
+
+          <div class="hero-meta">
+            <div>
+              <span class="mini-label">Hosting</span>
+              <strong>Google Apps Script</strong>
+            </div>
+            <div>
+              <span class="mini-label">Skrzynki</span>
+              <strong>Gmail + support + office</strong>
+            </div>
+            <div>
+              <span class="mini-label">Nastepny etap</span>
+              <strong>BaseLinker API</strong>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section id="statsGrid" class="stats-grid"></section>
+
+      <section class="workspace">
+        <aside class="panel queue-panel">
+          <div class="queue-head">
+            <div>
+              <p class="eyebrow">Inbox Radar</p>
+              <h2>Kolejka klientow</h2>
+            </div>
+            <div class="queue-actions">
+              <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez z Gmaila</button>
+              <button id="resetDemoBtn" class="ghost-btn" type="button">Reset statusow</button>
+            </div>
+          </div>
+
+          <label class="search-box" for="searchInput">
+            <span class="mini-label">Szukaj po mailu, numerze albo figurce</span>
+            <input id="searchInput" type="search" placeholder="np. Renmaeth / 3690 / Jason" />
+          </label>
+
+          <div id="filterBar" class="filter-bar" aria-label="Filtry kolejek"></div>
+          <div id="ticketList" class="ticket-list"></div>
+        </aside>
+
+        <section class="panel detail-panel">
+          <div id="detailView" class="detail-view"></div>
+        </section>
+
+        <aside class="panel ops-panel">
+          <div>
+            <p class="eyebrow">Operator View</p>
+            <h2>Co Ty robisz dalej</h2>
+          </div>
+
+          <div id="opsSummary" class="ops-summary"></div>
+
+          <div class="ops-card">
+            <p class="mini-label">Alerty i workflow</p>
+            <ul id="opsChecklist" class="ops-list"></ul>
+          </div>
+
+          <div class="ops-card roadmap">
+            <p class="mini-label">Roadmap</p>
+            <ul class="roadmap-list">
+              <li>BaseLinker bedzie tworzyl dosylki i replacementy automatycznie.</li>
+              <li>Tracking zamowienia wpada od razu do watku klienta i draftu.</li>
+              <li>Powiadomienia mozna potem rozszerzyc o Telegram albo Discord.</li>
+              <li>Watcher moze pozniej dopisywac priorytety i SLA dla klientow.</li>
+            </ul>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <template id="statCardTemplate">
+      <article class="stat-card">
+        <p class="mini-label"></p>
+        <strong class="stat-value"></strong>
+        <p class="stat-subtitle"></p>
+      </article>
+    </template>
+
+    <template id="ticketCardTemplate">
+      <button class="ticket-card" type="button">
+        <div class="ticket-top">
+          <span class="ticket-name"></span>
+          <span class="ticket-age"></span>
+        </div>
+        <p class="ticket-subject"></p>
+        <p class="ticket-preview"></p>
+        <div class="ticket-meta">
+          <span class="ticket-status"></span>
+          <span class="ticket-order"></span>
+        </div>
+      </button>
+    </template>
+
+    <script>
+      window.__IRONSHIELD_BOOTSTRAP__ = <?!= bootstrapJson ?>;
+    </script>
+    <?!= include('AppClient'); ?>
+  </body>
+</html>
