@@ -555,6 +555,11 @@ button {
   background: rgba(180, 35, 24, 0.08);
 }
 
+#clearSnapshotBtn {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: rgba(15, 118, 110, 0.08);
+}
+
 .ghost-btn:disabled {
   opacity: 0.6;
   cursor: wait;

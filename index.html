@@ -132,10 +132,14 @@
               <h2>Kolejka klientow</h2>
             </div>
             <div class="queue-actions">
+              <button id="importSnapshotBtn" class="ghost-btn" type="button">Wczytaj prywatny snapshot</button>
+              <button id="clearSnapshotBtn" class="ghost-btn" type="button" hidden>Wroc do demo</button>
               <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez dane</button>
               <button id="resetDemoBtn" class="ghost-btn" type="button">Reset lokalnych zmian</button>
             </div>
           </div>
+
+          <input id="importSnapshotInput" type="file" accept="application/json" hidden />
 
           <label class="search-box" for="searchInput">
             <span class="mini-label">Szukaj po mailu, numerze albo figurce</span>

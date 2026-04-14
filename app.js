@@ -1,6 +1,7 @@
 const UI_STORAGE_KEY = "ironshield_support_ui_v3";
 const OVERRIDES_STORAGE_KEY = "ironshield_support_overrides_v3";
 const AUTH_STATE_KEY = "ironshield_support_auth_v1";
+const PRIVATE_SNAPSHOT_KEY = "ironshield_support_private_snapshot_v1";
 const LIVE_DATA_SCRIPT = "support-data.js";
 const DEFAULT_CONFIG = {
   mode: "demo",
@@ -95,6 +96,7 @@ const state = {
   isSyncing: false,
   isUnlocked: true,
   isUnlocking: false,
+  privateSnapshot: null,
 };
 
 const el = {
@@ -111,6 +113,9 @@ const el = {
   opsSummary: document.getElementById("opsSummary"),
   opsChecklist: document.getElementById("opsChecklist"),
   searchInput: document.getElementById("searchInput"),
+  importSnapshotBtn: document.getElementById("importSnapshotBtn"),
+  clearSnapshotBtn: document.getElementById("clearSnapshotBtn"),
+  importSnapshotInput: document.getElementById("importSnapshotInput"),
   resetDemoBtn: document.getElementById("resetDemoBtn"),
   syncNowBtn: document.getElementById("syncNowBtn"),
   syncMeta: document.getElementById("syncMeta"),
@@ -154,6 +159,10 @@ function runtimeConfig() {
 
 function usesRemoteApi() {
   return state.config.mode === "remote" && Boolean(state.config.remoteDataUrl);
+}
+
+function hasPrivateSnapshot() {
+  return Boolean(state.privateSnapshot && state.privateSnapshot.payload);
 }
 
 function authEnabled() {
@@ -297,6 +306,37 @@ function saveOverrides() {
   localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(state.overrides));
 }
 
+function readPrivateSnapshot() {
+  const raw = localStorage.getItem(PRIVATE_SNAPSHOT_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.payload || !Array.isArray(parsed.payload.tickets)) {
+      return null;
+    }
+
+    return {
+      name: typeof parsed.name === "string" ? parsed.name : "private-support-snapshot.json",
+      savedAt: parsed.savedAt || null,
+      payload: parsed.payload,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function savePrivateSnapshot(snapshot) {
+  state.privateSnapshot = snapshot;
+
+  if (!snapshot) {
+    localStorage.removeItem(PRIVATE_SNAPSHOT_KEY);
+    return;
+  }
+
+  localStorage.setItem(PRIVATE_SNAPSHOT_KEY, JSON.stringify(snapshot));
+}
+
 function normalizePayload(raw) {
   if (raw && Array.isArray(raw.tickets) && raw.tickets.length) {
     return {
@@ -339,6 +379,15 @@ function applyPayload(rawPayload) {
   };
   state.tickets = mergeTicketsWithOverrides(payload.tickets);
   ensureSelectedTicket();
+}
+
+function applyDefaultPayload() {
+  if (hasPrivateSnapshot()) {
+    applyPayload(state.privateSnapshot.payload);
+    return;
+  }
+
+  applyPayload(usesRemoteApi() ? null : window.__IRONSHIELD_SUPPORT_DATA__);
 }
 
 function ensureSelectedTicket() {
@@ -514,19 +563,33 @@ function renderSyncMeta() {
   const updated = state.liveMeta.updatedAt ? formatDate(state.liveMeta.updatedAt) : "brak syncu";
   const syncingText = authEnabled() && !state.isUnlocked
     ? "Panel jest zablokowany haslem operatora."
-    : state.isSyncing
-      ? usesRemoteApi()
-        ? "Trwa odswiezanie prywatnego API..."
-        : "Trwa odswiezanie feedu demo..."
-      : usesRemoteApi()
-        ? "Panel czyta prywatny endpoint JSON."
-        : "Panel czyta publiczny plik support-data.js.";
+    : hasPrivateSnapshot()
+      ? `Aktywny jest prywatny snapshot z pliku ${state.privateSnapshot.name}.`
+      : state.isSyncing
+        ? usesRemoteApi()
+          ? "Trwa odswiezanie prywatnego API..."
+          : "Trwa odswiezanie feedu demo..."
+        : usesRemoteApi()
+          ? "Panel czyta prywatny endpoint JSON."
+          : "Panel czyta publiczny plik support-data.js.";
   el.syncMeta.textContent = `Ostatni sync: ${updated}. Zrodlo: ${state.liveMeta.syncSource}. ${syncingText}`;
-  el.syncNowBtn.disabled = state.isSyncing || (authEnabled() && !state.isUnlocked);
-  el.syncNowBtn.textContent = state.isSyncing ? "Odswiezanie..." : "Odswiez dane";
+  el.syncNowBtn.disabled = state.isSyncing || (authEnabled() && !state.isUnlocked) || hasPrivateSnapshot();
+  el.syncNowBtn.textContent = hasPrivateSnapshot()
+    ? "Snapshot aktywny"
+    : state.isSyncing
+      ? "Odswiezanie..."
+      : "Odswiez dane";
+  el.clearSnapshotBtn.hidden = !hasPrivateSnapshot();
 }
 
 function renderRuntimeLabels() {
+  if (hasPrivateSnapshot()) {
+    el.runtimeModeLabel.textContent = "Prywatny snapshot";
+    el.runtimeFeaturesLabel.textContent = "Realne maile z lokalnego pliku";
+    el.runtimeNextStepLabel.textContent = "Wczytaj nowy plik, aby odswiezyc kolejke";
+    return;
+  }
+
   el.runtimeModeLabel.textContent = state.config.labels.mode;
   el.runtimeFeaturesLabel.textContent = state.config.labels.features;
   el.runtimeNextStepLabel.textContent = state.config.labels.nextStep;
@@ -866,7 +929,7 @@ function fetchRemotePayload() {
 }
 
 function refreshLiveData({ silent = false } = {}) {
-  if (state.isSyncing || (authEnabled() && !state.isUnlocked)) return;
+  if (state.isSyncing || (authEnabled() && !state.isUnlocked) || hasPrivateSnapshot()) return;
 
   state.isSyncing = true;
   renderSyncMeta();
@@ -920,6 +983,43 @@ function refreshLiveData({ silent = false } = {}) {
   document.head.appendChild(script);
 }
 
+function importPrivateSnapshot(file) {
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    try {
+      const raw = JSON.parse(String(reader.result || "{}"));
+      const payload =
+        raw && raw.payload && Array.isArray(raw.payload.tickets)
+          ? raw.payload
+          : raw;
+      const normalized = normalizePayload(payload);
+      const snapshot = {
+        name: file.name,
+        savedAt: new Date().toISOString(),
+        payload: normalized,
+      };
+
+      savePrivateSnapshot(snapshot);
+      applyPayload(normalized);
+      saveUiState();
+      render();
+      toast("Prywatny snapshot zostal wczytany do panelu.");
+    } catch {
+      toast("Nie udalo sie wczytac snapshotu. Sprawdz, czy plik jest poprawnym JSON-em.");
+    } finally {
+      el.importSnapshotInput.value = "";
+    }
+  };
+
+  reader.onerror = () => {
+    el.importSnapshotInput.value = "";
+    toast("Nie udalo sie odczytac pliku snapshotu.");
+  };
+
+  reader.readAsText(file);
+}
+
 function attachEvents() {
   el.searchInput.value = state.search;
 
@@ -938,6 +1038,24 @@ function attachEvents() {
     lockPanel();
   });
 
+  el.importSnapshotBtn.addEventListener("click", () => {
+    el.importSnapshotInput.click();
+  });
+
+  el.importSnapshotInput.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    importPrivateSnapshot(file);
+  });
+
+  el.clearSnapshotBtn.addEventListener("click", () => {
+    savePrivateSnapshot(null);
+    applyDefaultPayload();
+    saveUiState();
+    render();
+    toast("Wylaczono prywatny snapshot. Panel wrocil do danych demo.");
+  });
+
   el.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value;
     saveUiState();
@@ -947,10 +1065,10 @@ function attachEvents() {
   el.resetDemoBtn.addEventListener("click", () => {
     state.overrides = {};
     saveOverrides();
-    applyPayload(window.__IRONSHIELD_SUPPORT_DATA__);
+    applyDefaultPayload();
     saveUiState();
     render();
-    toast("Wyczyszczono lokalne zmiany panelu.");
+    toast(hasPrivateSnapshot() ? "Wyczyszczono lokalne zmiany na prywatnym snapshotcie." : "Wyczyszczono lokalne zmiany panelu.");
   });
 
   el.syncNowBtn.addEventListener("click", () => {
@@ -962,7 +1080,8 @@ loadUiState();
 loadOverrides();
 state.config = runtimeConfig();
 state.isUnlocked = readAuthState();
-applyPayload(usesRemoteApi() ? null : window.__IRONSHIELD_SUPPORT_DATA__);
+state.privateSnapshot = readPrivateSnapshot();
+applyDefaultPayload();
 attachEvents();
 render();
 applyAuthState();
