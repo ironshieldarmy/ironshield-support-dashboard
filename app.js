@@ -4,6 +4,7 @@ const AUTH_STATE_KEY = "ironshield_support_auth_v1";
 const PRIVATE_SNAPSHOT_KEY = "ironshield_support_private_snapshot_v1";
 const TWEAKS_STORAGE_KEY = "ironshield_support_tweaks_v1";
 const LIVE_DATA_SCRIPT = "support-data.js";
+const DEMO_SCRIPT_TIMEOUT_MS = 5000;
 const DEFAULT_TWEAKS = {
   theme: "dark",
   density: "regular",
@@ -172,7 +173,34 @@ const el = {
 };
 
 function clone(value) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
   return JSON.parse(JSON.stringify(value));
+}
+
+function safeStatusMeta(status) {
+  return STATUS_META[status] || STATUS_META.new;
+}
+
+function safeInternalCta(ticket) {
+  const source = ticket?.internalCta && typeof ticket.internalCta === "object" ? ticket.internalCta : {};
+  return {
+    orderNumber: source.orderNumber || ticket?.orderNumber || "brak",
+    customerEmail: source.customerEmail || ticket?.customerEmail || "brak",
+    baseLinkerAction: source.baseLinkerAction || "Brak akcji operacyjnej w payloadzie.",
+    notes: source.notes || "Brak dodatkowych uwag do tej sprawy.",
+  };
+}
+
+function isValidSupportPayload(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      Array.isArray(payload.tickets) &&
+      payload.tickets.every((ticket) => ticket && typeof ticket === "object" && typeof ticket.id === "string")
+  );
 }
 
 function readTweaks() {
@@ -354,6 +382,8 @@ function applyAuthState() {
     el.passcodeInput.value = "";
     setAuthMessage("To jest lekka blokada front-endowa dla szybkiego ograniczenia dostępu do panelu.");
   }
+
+  syncLiveRefreshLoop();
 }
 
 async function unlockPanel() {
@@ -485,10 +515,12 @@ function savePrivateSnapshot(snapshot) {
 
   if (!snapshot) {
     localStorage.removeItem(PRIVATE_SNAPSHOT_KEY);
+    syncLiveRefreshLoop();
     return;
   }
 
   localStorage.setItem(PRIVATE_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  syncLiveRefreshLoop();
 }
 
 function normalizePayload(raw) {
@@ -1012,6 +1044,33 @@ function buildDraftFromTicket(ticket, operatorHint = "", currentDraft = "") {
   return reviseDraftWithOperatorInput(ticket, baseDraft, operatorHint);
 }
 
+function buildHintPreviewDraft(ticket, operatorHint = "", currentDraft = "") {
+  const hintText = String(operatorHint || "").trim();
+  const baseDraft = currentDraft && String(currentDraft).trim()
+    ? currentDraft
+    : String(ticket.draft || "").trim() || buildBaseDraftFromTicket(ticket);
+
+  if (!hintText) {
+    return {
+      hasHint: false,
+      changed: false,
+      text: "",
+    };
+  }
+
+  const text = buildDraftFromTicket(
+    { ...ticket, draft: baseDraft, operatorHint: hintText },
+    hintText,
+    baseDraft
+  );
+
+  return {
+    hasHint: true,
+    changed: String(text).trim() !== String(baseDraft).trim(),
+    text,
+  };
+}
+
 function categoryForTicket(ticket) {
   const haystack = normalizeSupportText(
     [
@@ -1316,7 +1375,7 @@ function renderQueue() {
 
   tickets.forEach((ticket) => {
     const node = el.ticketCardTemplate.content.firstElementChild.cloneNode(true);
-    const statusMeta = STATUS_META[ticket.status];
+    const statusMeta = safeStatusMeta(ticket.status);
     const category = categoryForTicket(ticket);
     const waiting = waitingStateForTicket(ticket);
     const badgeText = ticket.needsBaselinker && !ticket.baselinkerDone
@@ -1373,7 +1432,7 @@ function renderDetail() {
     return;
   }
 
-  const statusMeta = STATUS_META[ticket.status];
+  const statusMeta = safeStatusMeta(ticket.status);
   const category = categoryForTicket(ticket);
   const waiting = waitingStateForTicket(ticket);
   const checklistItems = checklistItemsForTicket(ticket);
@@ -1497,7 +1556,14 @@ function renderDetail() {
           <div class="draft-hint-chips">
             ${HINT_CHIPS.map((chip) => `<button type="button" class="draft-hint-chip" data-hint-chip="${escapeHtml(chip)}">+ ${escapeHtml(chip)}</button>`).join("")}
           </div>
-          <button id="generateDraftBtn" type="button" class="btn btn-primary btn-sm draft-hint-apply">Przerob wg wskazowek</button>
+          <button id="generateDraftBtn" type="button" class="btn btn-primary btn-sm draft-hint-apply">Wstaw odpowiedz AI do draftu</button>
+          <div id="hintPreviewCard" class="draft-hint-preview" data-state="idle">
+            <div class="draft-hint-preview-top">
+              <span class="draft-hint-preview-title">Odpowiedz AI wg wskazowek</span>
+              <span id="hintPreviewStatus" class="draft-hint-preview-status">AI czeka na wskazowki.</span>
+            </div>
+            <pre id="hintPreviewText" class="draft-hint-preview-text">Tutaj pojawi sie odpowiedz dopasowana do Twoich wskazowek.</pre>
+          </div>
         </div>
       </div>
     </section>
@@ -1564,18 +1630,98 @@ function renderDetail() {
 
   const operatorHintEditor = document.getElementById("operatorHintEditor");
   const draftEditor = document.getElementById("draftEditor");
+  const generateDraftBtn = document.getElementById("generateDraftBtn");
+  const hintPreviewCard = document.getElementById("hintPreviewCard");
+  const hintPreviewStatus = document.getElementById("hintPreviewStatus");
+  const hintPreviewText = document.getElementById("hintPreviewText");
+  const hintPreviewPlaceholder = "Tutaj pojawi sie odpowiedz dopasowana do Twoich wskazowek.";
+  let hintPreviewTimer = 0;
+  let hintPreviewRunId = 0;
   operatorHintEditor.value = ticket.operatorHint || "";
   draftEditor.value = ticket.draft || buildBaseDraftFromTicket(ticket);
 
+  function liveTicketSnapshot() {
+    return state.tickets.find((item) => item.id === ticket.id) || ticket;
+  }
+
+  function currentHintPreview() {
+    const liveTicket = liveTicketSnapshot();
+    return buildHintPreviewDraft(
+      {
+        ...liveTicket,
+        draft: draftEditor.value,
+        operatorHint: operatorHintEditor.value,
+      },
+      operatorHintEditor.value,
+      draftEditor.value
+    );
+  }
+
+  function renderHintPreview(preview, { pending = false } = {}) {
+    const hasHint = Boolean(preview?.hasHint);
+    const changed = Boolean(preview?.changed);
+    const stateLabel = pending
+      ? "pending"
+      : !hasHint
+        ? "idle"
+        : changed
+          ? "ready"
+          : "same";
+
+    hintPreviewCard.dataset.state = stateLabel;
+    hintPreviewText.textContent = hasHint ? preview.text : hintPreviewPlaceholder;
+    generateDraftBtn.disabled = !hasHint || pending;
+
+    if (!hasHint) {
+      hintPreviewStatus.textContent = "AI czeka na wskazowki.";
+      return;
+    }
+
+    if (pending) {
+      hintPreviewStatus.textContent = "AI uklada odpowiedz wedlug Twoich wskazowek...";
+      return;
+    }
+
+    hintPreviewStatus.textContent = changed
+      ? "Odpowiedz gotowa. Mozesz ja wstawic do draftu."
+      : "Ten draft juz odpowiada Twoim wskazowkom.";
+  }
+
+  function scheduleHintPreview({ immediate = false } = {}) {
+    window.clearTimeout(hintPreviewTimer);
+    const preview = currentHintPreview();
+
+    if (!preview.hasHint) {
+      renderHintPreview(preview);
+      return;
+    }
+
+    const runId = hintPreviewRunId + 1;
+    hintPreviewRunId = runId;
+    renderHintPreview(preview, { pending: true });
+
+    hintPreviewTimer = window.setTimeout(() => {
+      if (runId !== hintPreviewRunId) {
+        return;
+      }
+
+      renderHintPreview(currentHintPreview());
+    }, immediate ? 0 : 320);
+  }
+
   operatorHintEditor.addEventListener("input", (event) => {
     updateTicket(ticket.id, { operatorHint: event.target.value }, { renderNow: false });
+    scheduleHintPreview();
   });
 
   draftEditor.addEventListener("input", (event) => {
     updateTicket(ticket.id, { draft: event.target.value }, { renderNow: false });
+    if (operatorHintEditor.value.trim()) {
+      scheduleHintPreview();
+    }
   });
 
-  document.querySelectorAll("[data-copy-value]").forEach((button) => {
+  el.detailView.querySelectorAll("[data-copy-value]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(button.dataset.copyValue || "");
@@ -1593,6 +1739,7 @@ function renderDetail() {
         ? `${operatorHintEditor.value.trim()}, ${value}`
         : value;
       updateTicket(ticket.id, { operatorHint: operatorHintEditor.value }, { renderNow: false });
+      scheduleHintPreview();
     });
   });
 
@@ -1605,14 +1752,18 @@ function renderDetail() {
     }
   });
 
-  document.getElementById("generateDraftBtn").addEventListener("click", () => {
-    const liveTicket = selectedTicket() || ticket;
+  generateDraftBtn.addEventListener("click", () => {
+    const liveTicket = liveTicketSnapshot();
+    const preview = currentHintPreview();
+
+    if (!preview.hasHint) {
+      toast("Wpisz najpierw wskazowke do draftu.");
+      operatorHintEditor.focus();
+      return;
+    }
+
     const previousDraft = String(draftEditor.value || "").trim();
-    const nextDraft = buildDraftFromTicket(
-      { ...liveTicket, draft: draftEditor.value, operatorHint: operatorHintEditor.value },
-      operatorHintEditor.value,
-      draftEditor.value
-    );
+    const nextDraft = preview.text;
     draftEditor.value = nextDraft;
     updateTicket(
       liveTicket.id,
@@ -1623,18 +1774,17 @@ function renderDetail() {
       { renderNow: false }
     );
 
-    if (!operatorHintEditor.value.trim()) {
-      toast("Wpisz najpierw wskazowke do draftu.");
-      return;
-    }
+    scheduleHintPreview({ immediate: true });
 
     if (String(nextDraft).trim() === previousDraft) {
-      toast("Ta wskazowka nie zmienila draftu. Napisz ja prosciej, np. 'popros o zdjecia' albo 'dodaj wysylka 7-10 dni'.");
+      toast("Ten draft juz jest zgodny z Twoimi wskazowkami. Pokazalem go tez pod spodem.");
       return;
     }
 
-    toast("Draft przerobiony wedlug Twoich wskazowek.");
+    toast("Wstawilem odpowiedz AI do draftu.");
   });
+
+  scheduleHintPreview({ immediate: true });
 
   document.querySelectorAll("[data-step-check]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
@@ -1807,7 +1957,8 @@ function renderOpsPanel() {
     return;
   }
 
-  const statusMeta = STATUS_META[ticket.status];
+  const statusMeta = safeStatusMeta(ticket.status);
+  const internalCta = safeInternalCta(ticket);
   const opsItems = [];
 
   if (ticket.unread) {
@@ -1839,8 +1990,8 @@ function renderOpsPanel() {
     </div>
     <div class="ops-card">
       <p class="mini-label">Operacyjny skrot</p>
-      <strong>${escapeHtml(ticket.internalCta.baseLinkerAction)}</strong>
-      <p>${escapeHtml(ticket.internalCta.notes)}</p>
+      <strong>${escapeHtml(internalCta.baseLinkerAction)}</strong>
+      <p>${escapeHtml(internalCta.notes)}</p>
     </div>
   `;
 
@@ -2075,17 +2226,87 @@ function loadDemoScriptPayload() {
   return new Promise((resolve, reject) => {
     const staleRuntimeScripts = document.querySelectorAll('script[data-role="support-data-runtime"]');
     staleRuntimeScripts.forEach((script) => script.remove());
+    delete window.__IRONSHIELD_SUPPORT_DATA__;
 
     const script = document.createElement("script");
     script.src = `${LIVE_DATA_SCRIPT}?ts=${Date.now()}`;
     script.async = true;
     script.dataset.role = "support-data-runtime";
+    let settled = false;
 
-    script.onload = () => resolve(window.__IRONSHIELD_SUPPORT_DATA__);
-    script.onerror = () => reject(new Error("demo_feed_failed"));
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+    };
+
+    const finish = (error, payload) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(payload);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      finish(new Error("demo_feed_timeout"));
+    }, DEMO_SCRIPT_TIMEOUT_MS);
+
+    script.onload = () => {
+      const payload = window.__IRONSHIELD_SUPPORT_DATA__;
+      if (!isValidSupportPayload(payload)) {
+        finish(new Error("demo_feed_invalid"));
+        return;
+      }
+
+      finish(null, payload);
+    };
+    script.onerror = () => finish(new Error("demo_feed_failed"));
 
     document.head.appendChild(script);
   });
+}
+
+function shouldPollLiveData() {
+  if (document.hidden || hasPrivateSnapshot()) {
+    return false;
+  }
+
+  if (authEnabled() && !state.isUnlocked) {
+    return false;
+  }
+
+  return true;
+}
+
+function clearLiveRefreshLoop() {
+  if (window.__IRONSHIELD_SUPPORT_REFRESH_TIMER__) {
+    window.clearInterval(window.__IRONSHIELD_SUPPORT_REFRESH_TIMER__);
+    window.__IRONSHIELD_SUPPORT_REFRESH_TIMER__ = 0;
+  }
+}
+
+function syncLiveRefreshLoop() {
+  clearLiveRefreshLoop();
+
+  if (!shouldPollLiveData()) {
+    return;
+  }
+
+  window.__IRONSHIELD_SUPPORT_REFRESH_TIMER__ = window.setInterval(() => {
+    if (!shouldPollLiveData()) {
+      clearLiveRefreshLoop();
+      return;
+    }
+
+    refreshLiveData({ silent: true });
+  }, state.config.refreshIntervalMs);
 }
 
 async function refreshLiveData({ silent = false, passcode = "" } = {}) {
@@ -2213,6 +2434,7 @@ function importPrivateSnapshot(file) {
 
 function attachEvents() {
   el.searchInput.value = state.search;
+  let searchRenderTimer = 0;
 
   el.unlockBtn.addEventListener("click", () => {
     unlockPanel();
@@ -2274,7 +2496,10 @@ function attachEvents() {
   el.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value;
     saveUiState();
-    renderQueue();
+    window.clearTimeout(searchRenderTimer);
+    searchRenderTimer = window.setTimeout(() => {
+      renderQueue();
+    }, 120);
   });
 
   el.resetDemoBtn.addEventListener("click", () => {
@@ -2295,6 +2520,10 @@ function attachEvents() {
       toggleTweaksPanel(false);
     }
   });
+
+  document.addEventListener("visibilitychange", () => {
+    syncLiveRefreshLoop();
+  });
 }
 
 loadUiState();
@@ -2311,4 +2540,4 @@ applyAuthState();
 if (usesRemoteApi()) {
   refreshLiveData({ silent: true });
 }
-window.setInterval(() => refreshLiveData({ silent: true }), state.config.refreshIntervalMs);
+syncLiveRefreshLoop();
