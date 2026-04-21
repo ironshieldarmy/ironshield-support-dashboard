@@ -1,0 +1,63 @@
+/* Surprise modes */
+
+.surprise-cockpit .app-body {
+  position: relative;
+}
+
+.surprise-cockpit .app-body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, oklch(1 0 0 / 0.02), transparent 120px),
+    radial-gradient(ellipse at top, oklch(0.72 0.14 35 / 0.04), transparent 60%);
+  z-index: 1;
+}
+
+.surprise-cockpit .case-header {
+  background:
+    linear-gradient(180deg, var(--bg-1), var(--bg-1)),
+    repeating-linear-gradient(90deg, var(--line-1) 0 1px, transparent 1px 40px);
+  background-blend-mode: normal;
+  position: relative;
+}
+
+.surprise-cockpit .case-header::before {
+  content: "";
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--ember), transparent);
+  opacity: 0.5;
+}
+
+.surprise-cockpit .topbar {
+  background: linear-gradient(180deg, var(--bg-1), oklch(from var(--bg-1) l c h / 0.8));
+}
+
+.surprise-cockpit .queue {
+  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+}
+
+.surprise-cockpit .case-subject {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  font-weight: 500;
+}
+
+.surprise-focus .app-body {
+  grid-template-columns: 1fr;
+}
+
+.surprise-focus .queue {
+  display: none;
+}
+
+.surprise-focus .case-detail {
+  max-width: 820px;
+  margin: 0 auto;
+  width: 100%;
+}

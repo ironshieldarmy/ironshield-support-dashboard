@@ -3,6 +3,8 @@ window.__IRONSHIELD_SUPPORT_CONFIG__ = {
   mode: "demo",
   remoteDataUrl: "",
   encryptedFeedUrl: "support-feed.json",
+  replyApiUrl: "",
+  composeFallback: true,
   refreshIntervalMs: 60 * 1000,
   auth: {
     enabled: true,

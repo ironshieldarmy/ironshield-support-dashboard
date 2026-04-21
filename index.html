@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html lang="pl" data-theme="dark" data-density="regular">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,27 +7,26 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="design-system/tokens.css" />
+    <link rel="stylesheet" href="design-system/components.css" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles/surprise.css" />
   </head>
   <body class="locked">
-    <div class="terrain terrain-one"></div>
-    <div class="terrain terrain-two"></div>
-    <div class="terrain terrain-three"></div>
-
     <div id="authGate" class="auth-gate">
       <section class="auth-card" aria-labelledby="authTitle">
-        <p class="eyebrow">IronShield Operator Gate</p>
+        <p class="section-label">IronShield Operator Gate</p>
         <h2 id="authTitle">Wejście do Support War Room</h2>
         <p class="auth-lead">
-          Ten widok jest przeznaczony dla operatora sklepu. Po odblokowaniu zobaczysz realną kolejkę
-          zgłoszeń klientów, draft odpowiedzi i CTA do BaseLinkera.
+          Ten widok jest przeznaczony dla operatora sklepu. Po odblokowaniu zobaczysz kolejke
+          maili klientow, draft odpowiedzi i kroki operacyjne do dalszej pracy.
         </p>
 
         <label class="auth-field" for="passcodeInput">
-          <span class="mini-label">Hasło operatora</span>
+          <span class="section-label">Haslo operatora</span>
           <input
             id="passcodeInput"
             type="password"
@@ -37,83 +36,60 @@
         </label>
 
         <div class="auth-actions">
-          <button id="unlockBtn" class="action-btn primary auth-submit" type="button">Odblokuj panel</button>
-          <p id="authMessage" class="auth-message muted">
+          <button id="unlockBtn" class="btn btn-primary auth-submit" type="button">Odblokuj panel</button>
+          <p id="authMessage" class="auth-message">
             To jest lekka blokada front-endowa dla szybkiego ograniczenia dostępu do panelu.
           </p>
         </div>
       </section>
     </div>
 
-    <main id="appShell" class="shell">
-      <header class="panel hero">
-        <div class="hero-copy">
-          <p class="eyebrow">IronShield HQ</p>
-          <h1>Customer Support War Room</h1>
-          <p class="lead">
-            Panel do obsługi klientów: kolejka spraw, draft odpowiedzi i konkretne CTA do dalszej
-            pracy w BaseLinkerze.
-          </p>
+    <main id="appShell" class="app app-root">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="topbar-brand-shield">IS</span>
+          <span>IronShield</span>
+          <span class="topbar-brand-sep">/</span>
+          <span class="topbar-brand-sub">Support War Room</span>
         </div>
 
-        <div class="alert-box">
-          <div class="hero-tools">
-            <p class="mini-label">Powiadomienia</p>
-            <button id="lockPanelBtn" class="ghost-btn lock-btn" type="button">Zablokuj panel</button>
-          </div>
-          <div class="alert-headline">
-            <span class="pulse-dot"></span>
+        <div class="topbar-feed">
+          <div class="topbar-feed-line">
+            <span class="feed-bullet"></span>
             <strong id="alertHeadline">Ladowanie...</strong>
           </div>
-          <p id="alertSubline" class="muted">
-            Po odblokowaniu zobaczysz realne zgłoszenia klientów.
-          </p>
-          <p id="syncMeta" class="muted">
-            Panel ładuje feed klientów.
-          </p>
+          <p id="alertSubline" class="topbar-subline">Po odblokowaniu zobaczysz realne zgloszenia klientow.</p>
+          <p id="syncMeta" class="topbar-meta">Panel laduje feed klientow.</p>
+        </div>
 
-          <div class="hero-meta">
-            <div>
-              <span class="mini-label">Tryb teraz</span>
-              <strong id="runtimeModeLabel">GitHub Pages demo</strong>
-            </div>
-            <div>
-              <span class="mini-label">Co pokazuje</span>
-              <strong id="runtimeFeaturesLabel">Queue + draft + CTA</strong>
-            </div>
-            <div>
-              <span class="mini-label">Następny etap</span>
-              <strong id="runtimeNextStepLabel">Prywatny backend + BaseLinker</strong>
-            </div>
-          </div>
+        <div class="topbar-actions">
+          <button id="tweaksToggleBtn" class="btn btn-ghost btn-sm" type="button">Tweaks</button>
+          <button id="syncNowBtn" class="btn btn-sm" type="button">Odswiez maile</button>
+          <button id="lockPanelBtn" class="btn btn-ghost btn-sm" type="button">Zablokuj panel</button>
         </div>
       </header>
 
-      <section id="statsGrid" class="stats-grid"></section>
-
-      <section class="workspace">
-        <aside class="panel queue-panel">
+      <section class="app-body">
+        <aside class="queue">
           <div class="queue-head">
-            <div>
-              <p class="eyebrow">Inbox Radar</p>
-              <h2>Kolejka klientow</h2>
+            <div class="queue-title">
+              <span class="section-label">Kolejka</span>
+              <span class="queue-title-count" id="queueTitleCount">0</span>
             </div>
-            <div class="queue-actions">
-              <button id="syncNowBtn" class="ghost-btn" type="button">Odswiez dane</button>
-              <button id="resetDemoBtn" class="ghost-btn" type="button">Reset lokalnych zmian</button>
-            </div>
+            <p class="section-label queue-note">Najstarsze maile sa na gorze.</p>
           </div>
 
-          <label class="search-box" for="searchInput">
-            <span class="mini-label">Szukaj po mailu, numerze albo figurce</span>
-            <input id="searchInput" type="search" placeholder="np. Moonblade / 4108 / Aria" />
+          <section id="statsGrid" class="stats-grid"></section>
+
+          <label class="queue-search" for="searchInput">
+            <input id="searchInput" class="queue-search-input" type="search" placeholder="Szukaj po kliencie, numerze albo figurce" />
           </label>
 
-          <div id="filterBar" class="filter-bar" aria-label="Filtry kolejek"></div>
-          <div id="ticketList" class="ticket-list"></div>
+          <div id="filterBar" class="queue-cats" aria-label="Filtry kolejek"></div>
+          <div id="ticketList" class="queue-list"></div>
         </aside>
 
-        <section class="panel detail-panel">
+        <section class="case-detail">
           <div id="detailView" class="detail-view"></div>
         </section>
       </section>
@@ -121,31 +97,121 @@
       <section class="support-hooks" aria-hidden="true" hidden>
         <button id="importSnapshotBtn" type="button">Hidden import</button>
         <button id="clearSnapshotBtn" type="button">Hidden clear</button>
+        <button id="resetDemoBtn" type="button">Hidden reset</button>
         <input id="importSnapshotInput" type="file" accept="application/json" />
         <div id="opsSummary"></div>
         <ul id="opsChecklist"></ul>
       </section>
+
+      <aside id="tweaksPanel" class="tweaks" aria-label="Panel ustawien widoku">
+        <div class="tweaks-header">
+          <span class="tweaks-title">Tweaks</span>
+          <button id="closeTweaksBtn" class="btn btn-ghost btn-sm btn-icon" type="button" aria-label="Zamknij panel tweaks">
+            x
+          </button>
+        </div>
+
+        <div class="tweaks-body">
+          <div class="tweak-row">
+            <span class="tweak-label">Motyw</span>
+            <div class="tweak-seg">
+              <button type="button" data-tweak-key="theme" data-tweak-value="dark">Dark</button>
+              <button type="button" data-tweak-key="theme" data-tweak-value="light">Light</button>
+            </div>
+          </div>
+
+          <div class="tweak-row">
+            <span class="tweak-label">Gestosc</span>
+            <div class="tweak-seg">
+              <button type="button" data-tweak-key="density" data-tweak-value="compact">Compact</button>
+              <button type="button" data-tweak-key="density" data-tweak-value="regular">Regular</button>
+              <button type="button" data-tweak-key="density" data-tweak-value="comfy">Comfy</button>
+            </div>
+          </div>
+
+          <div class="tweak-row">
+            <span class="tweak-label">Kolor akcentu</span>
+            <div class="tweak-swatches">
+              <button
+                type="button"
+                class="tweak-swatch"
+                data-tweak-key="accent"
+                data-tweak-value="ember"
+                style="background: oklch(0.72 0.14 35)"
+                aria-label="Ember"
+                title="Ember"
+              ></button>
+              <button
+                type="button"
+                class="tweak-swatch"
+                data-tweak-key="accent"
+                data-tweak-value="steel"
+                style="background: oklch(0.72 0.09 230)"
+                aria-label="Steel"
+                title="Steel"
+              ></button>
+              <button
+                type="button"
+                class="tweak-swatch"
+                data-tweak-key="accent"
+                data-tweak-value="moss"
+                style="background: oklch(0.72 0.11 150)"
+                aria-label="Moss"
+                title="Moss"
+              ></button>
+              <button
+                type="button"
+                class="tweak-swatch"
+                data-tweak-key="accent"
+                data-tweak-value="violet"
+                style="background: oklch(0.72 0.14 300)"
+                aria-label="Violet"
+                title="Violet"
+              ></button>
+            </div>
+          </div>
+
+          <div class="tweak-row">
+            <span class="tweak-label">Surprise</span>
+            <div class="tweak-seg">
+              <button type="button" data-tweak-key="surprise" data-tweak-value="none">Off</button>
+              <button type="button" data-tweak-key="surprise" data-tweak-value="cockpit">Cockpit</button>
+              <button type="button" data-tweak-key="surprise" data-tweak-value="focus">Focus</button>
+            </div>
+            <span class="tweak-help">
+              Cockpit dodaje subtelny HUD przy headerze. Focus ukrywa kolejke i zostawia tylko aktywna sprawe.
+            </span>
+          </div>
+        </div>
+      </aside>
     </main>
 
     <template id="statCardTemplate">
       <article class="stat-card">
-        <p class="mini-label"></p>
+        <p class="section-label"></p>
         <strong class="stat-value"></strong>
         <p class="stat-subtitle"></p>
       </article>
     </template>
 
     <template id="ticketCardTemplate">
-      <button class="ticket-card" type="button">
-        <div class="ticket-top">
-          <span class="ticket-name"></span>
-          <span class="ticket-age"></span>
-        </div>
-        <p class="ticket-subject"></p>
-        <p class="ticket-preview"></p>
-        <div class="ticket-meta">
-          <span class="ticket-status"></span>
-          <span class="ticket-order"></span>
+      <button class="queue-item" type="button">
+        <div class="queue-item-rail"></div>
+        <div class="queue-item-main">
+          <div class="queue-item-row1">
+            <span class="queue-item-subject"></span>
+            <span class="queue-item-time"></span>
+          </div>
+          <div class="queue-item-row2">
+            <span class="chip queue-chip"></span>
+            <span class="queue-item-from"></span>
+            <span class="queue-item-order"></span>
+          </div>
+          <div class="queue-item-row3">
+            <span class="waiting queue-waiting"></span>
+            <span class="queue-item-badge"></span>
+          </div>
+          <p class="queue-item-preview"></p>
         </div>
       </button>
     </template>
@@ -153,7 +219,5 @@
     <script src="support-config.js"></script>
     <script src="support-data.js"></script>
     <script src="app.js"></script>
-    <script src="secure-feed.js"></script>
-    <script src="warroom-hotfix.js"></script>
   </body>
 </html>

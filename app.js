@@ -2,10 +2,26 @@ const UI_STORAGE_KEY = "ironshield_support_ui_v3";
 const OVERRIDES_STORAGE_KEY = "ironshield_support_overrides_v3";
 const AUTH_STATE_KEY = "ironshield_support_auth_v1";
 const PRIVATE_SNAPSHOT_KEY = "ironshield_support_private_snapshot_v1";
+const TWEAKS_STORAGE_KEY = "ironshield_support_tweaks_v1";
 const LIVE_DATA_SCRIPT = "support-data.js";
+const DEFAULT_TWEAKS = {
+  theme: "dark",
+  density: "regular",
+  accent: "ember",
+  surprise: "none",
+};
+const ACCENTS = [
+  { id: "ember", css: "oklch(0.72 0.14 35)", dim: "oklch(0.62 0.12 35)", bg: "oklch(0.72 0.14 35 / 0.12)" },
+  { id: "steel", css: "oklch(0.72 0.09 230)", dim: "oklch(0.62 0.08 230)", bg: "oklch(0.72 0.09 230 / 0.12)" },
+  { id: "moss", css: "oklch(0.72 0.11 150)", dim: "oklch(0.62 0.10 150)", bg: "oklch(0.72 0.11 150 / 0.12)" },
+  { id: "violet", css: "oklch(0.72 0.14 300)", dim: "oklch(0.62 0.12 300)", bg: "oklch(0.72 0.14 300 / 0.12)" },
+];
 const DEFAULT_CONFIG = {
   mode: "demo",
   remoteDataUrl: "",
+  encryptedFeedUrl: "",
+  replyApiUrl: "",
+  composeFallback: false,
   refreshIntervalMs: 60 * 1000,
   auth: {
     enabled: false,
@@ -19,12 +35,12 @@ const DEFAULT_CONFIG = {
 };
 
 const FILTERS = [
-  { id: "all", label: "Wszystko" },
-  { id: "new", label: "Nowe" },
-  { id: "needs-baselinker", label: "BaseLinker" },
-  { id: "ready", label: "Gotowe do wysylki" },
-  { id: "waiting", label: "Czeka na klienta" },
-  { id: "sent", label: "Wyslane" },
+  { id: "all", label: "Wszystkie" },
+  { id: "missing", label: "Braki" },
+  { id: "damaged", label: "Uszkodzenia" },
+  { id: "shipping", label: "Dostawa" },
+  { id: "replacement", label: "Dosylki" },
+  { id: "other", label: "Inne" },
 ];
 
 const STATUS_META = {
@@ -35,14 +51,33 @@ const STATUS_META = {
   sent: { label: "Wyslane", badgeClass: "" },
 };
 
+const CATEGORY_META = {
+  missing: { label: "Braki" },
+  damaged: { label: "Uszkodzenia" },
+  shipping: { label: "Dostawa" },
+  replacement: { label: "Dosylki" },
+  other: { label: "Inne" },
+};
+
 const MUTABLE_FIELDS = [
   "status",
   "unread",
   "needsBaselinker",
   "baselinkerDone",
   "draft",
+  "operatorHint",
   "sendEnabled",
   "internalCta",
+  "timeline",
+];
+
+const HINT_CHIPS = [
+  "krotko",
+  "bez upsellu",
+  "popros o foto",
+  "potwierdz adres",
+  "produkcja 5 dni",
+  "wysylka 7-10 dni",
 ];
 
 const fallbackTickets = [
@@ -90,6 +125,7 @@ const state = {
   overrides: {},
   liveMeta: {
     updatedAt: null,
+    checkedAt: null,
     syncSource: "fallback",
     ticketCount: 0,
   },
@@ -97,6 +133,9 @@ const state = {
   isUnlocked: true,
   isUnlocking: false,
   privateSnapshot: null,
+  feedPasscode: "",
+  tweaks: { ...DEFAULT_TWEAKS },
+  tweaksOpen: false,
 };
 
 const el = {
@@ -121,6 +160,10 @@ const el = {
   syncMeta: document.getElementById("syncMeta"),
   alertHeadline: document.getElementById("alertHeadline"),
   alertSubline: document.getElementById("alertSubline"),
+  tweaksToggleBtn: document.getElementById("tweaksToggleBtn"),
+  tweaksPanel: document.getElementById("tweaksPanel"),
+  closeTweaksBtn: document.getElementById("closeTweaksBtn"),
+  queueTitleCount: document.getElementById("queueTitleCount"),
   runtimeModeLabel: document.getElementById("runtimeModeLabel"),
   runtimeFeaturesLabel: document.getElementById("runtimeFeaturesLabel"),
   runtimeNextStepLabel: document.getElementById("runtimeNextStepLabel"),
@@ -132,6 +175,84 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function readTweaks() {
+  const raw = localStorage.getItem(TWEAKS_STORAGE_KEY);
+  if (!raw) return { ...DEFAULT_TWEAKS };
+
+  try {
+    const parsed = JSON.parse(raw);
+    const theme = parsed?.theme === "light" ? "light" : "dark";
+    const density = ["compact", "regular", "comfy"].includes(parsed?.density)
+      ? parsed.density
+      : DEFAULT_TWEAKS.density;
+    const accent = ACCENTS.some((item) => item.id === parsed?.accent)
+      ? parsed.accent
+      : DEFAULT_TWEAKS.accent;
+    const surprise = ["none", "cockpit", "focus"].includes(parsed?.surprise)
+      ? parsed.surprise
+      : DEFAULT_TWEAKS.surprise;
+
+    return {
+      theme,
+      density,
+      accent,
+      surprise,
+    };
+  } catch {
+    return { ...DEFAULT_TWEAKS };
+  }
+}
+
+function saveTweaks() {
+  localStorage.setItem(TWEAKS_STORAGE_KEY, JSON.stringify(state.tweaks));
+}
+
+function applyAccent(accentId) {
+  const accent = ACCENTS.find((item) => item.id === accentId) || ACCENTS[0];
+  document.documentElement.style.setProperty("--ember", accent.css);
+  document.documentElement.style.setProperty("--ember-dim", accent.dim);
+  document.documentElement.style.setProperty("--ember-bg", accent.bg);
+}
+
+function applyTweaks() {
+  document.documentElement.dataset.theme = state.tweaks.theme;
+  document.documentElement.dataset.density = state.tweaks.density;
+  applyAccent(state.tweaks.accent);
+  el.appShell.classList.toggle("surprise-cockpit", state.tweaks.surprise === "cockpit");
+  el.appShell.classList.toggle("surprise-focus", state.tweaks.surprise === "focus");
+}
+
+function renderTweaks() {
+  if (!el.tweaksPanel) return;
+
+  el.tweaksPanel.classList.toggle("is-open", state.tweaksOpen);
+
+  if (el.tweaksToggleBtn) {
+    el.tweaksToggleBtn.setAttribute("aria-pressed", String(state.tweaksOpen));
+  }
+
+  el.tweaksPanel.querySelectorAll("[data-tweak-key]").forEach((button) => {
+    const active = state.tweaks[button.dataset.tweakKey] === button.dataset.tweakValue;
+    button.classList.toggle("is-on", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function setTweak(key, value) {
+  state.tweaks = {
+    ...state.tweaks,
+    [key]: value,
+  };
+  saveTweaks();
+  applyTweaks();
+  renderTweaks();
+}
+
+function toggleTweaksPanel(force) {
+  state.tweaksOpen = typeof force === "boolean" ? force : !state.tweaksOpen;
+  renderTweaks();
+}
+
 function runtimeConfig() {
   const raw = window.__IRONSHIELD_SUPPORT_CONFIG__ || {};
   const labels = raw.labels && typeof raw.labels === "object" ? raw.labels : {};
@@ -140,6 +261,10 @@ function runtimeConfig() {
   return {
     mode: raw.mode === "remote" ? "remote" : "demo",
     remoteDataUrl: typeof raw.remoteDataUrl === "string" ? raw.remoteDataUrl.trim() : "",
+    encryptedFeedUrl:
+      typeof raw.encryptedFeedUrl === "string" ? raw.encryptedFeedUrl.trim() : "",
+    replyApiUrl: typeof raw.replyApiUrl === "string" ? raw.replyApiUrl.trim() : "",
+    composeFallback: Boolean(raw.composeFallback),
     refreshIntervalMs:
       Number.isFinite(raw.refreshIntervalMs) && raw.refreshIntervalMs >= 15 * 1000
         ? raw.refreshIntervalMs
@@ -161,8 +286,20 @@ function usesRemoteApi() {
   return state.config.mode === "remote" && Boolean(state.config.remoteDataUrl);
 }
 
+function usesEncryptedFeed() {
+  return Boolean(state.config.encryptedFeedUrl);
+}
+
 function hasPrivateSnapshot() {
   return Boolean(state.privateSnapshot && state.privateSnapshot.payload);
+}
+
+function isReplyApiConfigured() {
+  return Boolean(state.config.replyApiUrl);
+}
+
+function canSendTicket(ticket) {
+  return Boolean((ticket.draft || "").trim()) && (ticket.status === "ready" || ticket.sendEnabled);
 }
 
 function authEnabled() {
@@ -171,11 +308,16 @@ function authEnabled() {
 
 function readAuthState() {
   if (!authEnabled()) return true;
+  if (usesEncryptedFeed()) return false;
   return sessionStorage.getItem(AUTH_STATE_KEY) === state.config.auth.passcodeHash;
 }
 
 function persistAuthState(unlocked) {
   if (!authEnabled()) return;
+  if (usesEncryptedFeed()) {
+    sessionStorage.removeItem(AUTH_STATE_KEY);
+    return;
+  }
 
   if (unlocked) {
     sessionStorage.setItem(AUTH_STATE_KEY, state.config.auth.passcodeHash);
@@ -237,6 +379,17 @@ async function unlockPanel() {
       return;
     }
 
+    if (usesEncryptedFeed()) {
+      setAuthMessage("Odszyfrowuję feed klientów...", "info");
+      const decrypted = await refreshLiveData({ silent: true, passcode: candidate });
+      if (!decrypted) {
+        setAuthMessage("Nie udało się odczytać feedu klientów tym hasłem.", "error");
+        el.passcodeInput.select();
+        return;
+      }
+      state.feedPasscode = candidate;
+    }
+
     state.isUnlocked = true;
     persistAuthState(true);
     applyAuthState();
@@ -259,6 +412,7 @@ async function unlockPanel() {
 function lockPanel() {
   if (!authEnabled()) return;
   state.isUnlocked = false;
+  state.feedPasscode = "";
   persistAuthState(false);
   applyAuthState();
   el.passcodeInput.focus();
@@ -374,6 +528,7 @@ function applyPayload(rawPayload) {
   const payload = normalizePayload(rawPayload);
   state.liveMeta = {
     updatedAt: payload.updatedAt,
+    checkedAt: state.liveMeta.checkedAt,
     syncSource: payload.syncSource,
     ticketCount: payload.ticketCount,
   };
@@ -384,6 +539,11 @@ function applyPayload(rawPayload) {
 function applyDefaultPayload() {
   if (hasPrivateSnapshot()) {
     applyPayload(state.privateSnapshot.payload);
+    return;
+  }
+
+  if (usesEncryptedFeed()) {
+    applyPayload(null);
     return;
   }
 
@@ -456,6 +616,511 @@ function focusMessage(ticket) {
   };
 }
 
+function customerFirstName(ticket) {
+  const value = String(ticket.customerName || "").trim();
+  return value.split(/\s+/)[0] || "there";
+}
+
+function normalizeSupportText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replaceAll("ł", "l")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function detectDraftScenario(ticket) {
+  const haystack = normalizeSupportText(
+    [
+      ticket.subject,
+      ticket.summary,
+      ticket.preview,
+      ...(ticket.tags || []),
+      ticket.internalCta?.baseLinkerAction || "",
+    ].join(" ")
+  );
+
+  return {
+    shippingQuestion: /shipping|delivery time|how many days|texas|usa/.test(haystack),
+    tracking: /where is my order|tracking|status|delay|shipped/.test(haystack),
+    scaleIssue: /scale|32 mm|38 mm|wrong scale/.test(haystack),
+    damaged: /damaged|broken|replacement|zlam|uszkod/.test(haystack),
+    missing: /missing|brakuje|free gift|gift|welcome bribe|chest/.test(haystack),
+  };
+}
+
+function detectHintFlags(operatorHint) {
+  const hint = normalizeSupportText(operatorHint);
+
+  return {
+    shortMode: /krotk|short/.test(hint),
+    formalMode: /formal|neutral|bez nerd|without nerd/.test(hint),
+    noUpsell: /bez upsell|without upsell|no upsell/.test(hint),
+    forceUpsell: /zapytaj czy chce cos jeszcze|zapytaj o cos jeszcze|anything else|add anything else|dorzucic cos|dopytaj czy chce cos jeszcze/.test(
+      hint
+    ),
+    mentionAddress: /adres|address/.test(hint),
+    skipAddress: /bez adres|bez pytania o adres|without address|don't ask.*address/.test(hint),
+    confirmAddress: /potwierdz adres|confirm address|address still the same|ten sam adres/.test(hint),
+    mentionPackaging: /pakow|package|zabezpiecz|protect|lepiej zapak|better packaging/.test(hint),
+    mentionDelayCheck: /sprawdz|zweryfikuj|check|bazelinker|baselinker|system/.test(hint),
+    askPhoto: /zdjec|photo|picture|fotk|foto|fotograf/.test(hint),
+    askMeasuredPhotos: /zmierz|zmierzon|mierzon|measurement|measure|wymiar|dimension|linijk|ruler/.test(hint),
+    askWhatMissing: /co brakuje|ktorej figurki|which mini|which miniature|which item/.test(hint),
+    askWhatBroken: /co sie zlam|what broke|which part|what part/.test(hint),
+    mentionFulfillment: /5 dni|5 business days|czas realizacji|fulfillment|production time/.test(hint),
+    noPromise: /nie obiecuj|don't promise|do not promise|najpierw sprawdz/i.test(hint),
+    productionWindow: extractDayWindow(hint, "produkcj|realizac|production|fulfillment"),
+    shippingWindow: extractDayWindow(hint, "wysylk|dostaw|shipping|delivery|transit"),
+  };
+}
+
+function buildFallbackGuidanceParagraphs(ticket, operatorHint) {
+  const hint = normalizeSupportText(operatorHint);
+  const scenario = detectDraftScenario(ticket);
+  const orderLabel = ticket.orderNumber && ticket.orderNumber !== "brak" ? `order ${ticket.orderNumber}` : "your order";
+  const paragraphs = [];
+  const productionWindow = extractDayWindow(hint, "produkcj|realizac|production|fulfillment");
+  const shippingWindow = extractDayWindow(hint, "wysylk|dostaw|shipping|delivery|transit");
+
+  if (!hint) {
+    return paragraphs;
+  }
+
+  if (/zdjec|photo|picture|fotk|foto|fotograf/.test(hint) && /zmierz|zmierzon|mierzon|measure|measurement|linijk|ruler|wymiar|dimension/.test(hint)) {
+    paragraphs.push("If possible, please send photos of the measured miniatures, ideally with a ruler visible in the frame, so we can verify the scale properly.");
+    paragraphs.push("Once we have that, we can verify the scale properly and come back to you with the next step.");
+    return paragraphs;
+  }
+
+  if (/zdjec|photo|picture|fotk|foto|fotograf/.test(hint)) {
+    if (scenario.damaged) {
+      paragraphs.push("If possible, please send a quick photo of the damage so we can match the replacement correctly.");
+    } else if (scenario.missing) {
+      paragraphs.push("If possible, please send a quick photo of what arrived so we can confirm the missing part correctly.");
+    } else {
+      paragraphs.push("If possible, please send a few photos so we can verify the issue properly.");
+    }
+  }
+
+  if (/co brakuje|ktorej figurki|which mini|which miniature|which item/.test(hint)) {
+    paragraphs.push("If you can, please confirm exactly which miniature is missing from the order.");
+  }
+
+  if (/co sie zlam|what broke|which part|what part/.test(hint)) {
+    paragraphs.push("If you can, please let me know which part arrived broken.");
+  }
+
+  if (/adres|address/.test(hint) && !/bez adres|bez pytania o adres|without address|don't ask.*address/.test(hint)) {
+    paragraphs.push(`If your shipping address is still the same as in ${orderLabel}, we can move forward from our side.`);
+  }
+
+  if (/pakow|package|zabezpiecz|protect|lepiej zapak|better packaging/.test(hint)) {
+    paragraphs.push("I have also noted the packaging request, so we can take extra care with this replacement.");
+  }
+
+  if (/sprawdz|zweryfikuj|check|bazelinker|baselinker|system/.test(hint)) {
+    paragraphs.push(`I am checking ${orderLabel} in our system first so I can give you an accurate update instead of guessing.`);
+  }
+
+  if (productionWindow || shippingWindow || /5 dni|5 business days|czas realizacji|fulfillment|production time/.test(hint)) {
+    const timingLines = [];
+
+    if (productionWindow) {
+      timingLines.push(`Production usually takes ${formatBusinessDayWindow(productionWindow)}.`);
+    } else if (/5 dni|5 business days|czas realizacji|fulfillment|production time/.test(hint)) {
+      timingLines.push("Our average fulfillment time is about 5 business days.");
+    }
+
+    if (shippingWindow) {
+      timingLines.push(`Shipping after dispatch usually takes around ${formatBusinessDayWindow(shippingWindow, { prefix: "" })}.`);
+    }
+
+    if (timingLines.length) {
+      paragraphs.push(timingLines.join(" "));
+    }
+  }
+
+  return Array.from(new Set(paragraphs));
+}
+
+function joinDraft(parts) {
+  return parts.filter(Boolean).join("\n\n");
+}
+
+function splitDraftIntoParagraphs(draft) {
+  return String(draft || "")
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function insertBeforeSignoff(paragraphs, paragraph) {
+  if (!paragraph || paragraphs.includes(paragraph)) {
+    return paragraphs;
+  }
+
+  const signoffIndex = paragraphs.findIndex((item) => /^Best regards,/i.test(item));
+
+  if (signoffIndex === -1) {
+    paragraphs.push(paragraph);
+    return paragraphs;
+  }
+
+  paragraphs.splice(signoffIndex, 0, paragraph);
+  return paragraphs;
+}
+
+function removeParagraphsMatching(paragraphs, pattern) {
+  return paragraphs.filter((paragraph) => !pattern.test(paragraph));
+}
+
+function extractDayWindow(text, keywordPattern) {
+  const match = String(text || "").match(
+    new RegExp(`(?:${keywordPattern})[^\\d]{0,20}(\\d{1,2})(?:\\s*(?:-|–|—|do|to)\\s*(\\d{1,2}))?`, "i")
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    from: Number(match[1]),
+    to: match[2] ? Number(match[2]) : null,
+  };
+}
+
+function formatBusinessDayWindow(window, { prefix = "about " } = {}) {
+  if (!window) {
+    return "";
+  }
+
+  if (window.to && window.to !== window.from) {
+    return `${window.from}-${window.to} business days`;
+  }
+
+  return `${prefix}${window.from} business days`;
+}
+
+function buildBaseDraftFromTicket(ticket) {
+  const firstName = customerFirstName(ticket);
+  const orderLabel = ticket.orderNumber && ticket.orderNumber !== "brak" ? `order ${ticket.orderNumber}` : "your order";
+  const scenario = detectDraftScenario(ticket);
+  const greeting = `Hello ${firstName},`;
+  const signoff = "Best regards,\nIronShield Army Support";
+
+  if (scenario.shippingQuestion) {
+    return joinDraft([
+      greeting,
+      "Thank you for your message.",
+      "Our average fulfillment time is about 5 business days. After dispatch, delivery time depends on the carrier and destination, but that transit time comes on top of production.",
+      "If you already know which miniatures you want, feel free to send them over and we can help you estimate it a bit more closely.",
+      signoff,
+    ]);
+  }
+
+  if (scenario.tracking || ticket.needsBaselinker) {
+    return joinDraft([
+      greeting,
+      "Thank you for your message, and I am sorry for the delay.",
+      `I am checking ${orderLabel} in our system first so I can give you an accurate update instead of guessing.`,
+      "As soon as I verify the current status, I will get back to you with the next step.",
+      signoff,
+    ]);
+  }
+
+  if (scenario.scaleIssue) {
+    return joinDraft([
+      greeting,
+      "Thank you for your message, and I am very sorry about that.",
+      `I understand there may be an issue with the scale in ${orderLabel}. I am checking the order details from our side first so I can confirm exactly what happened and come back to you with the right solution.`,
+      "As soon as I verify the order, I will get back to you with the next step.",
+      signoff,
+    ]);
+  }
+
+  if (scenario.damaged) {
+    return joinDraft([
+      greeting,
+      "Thank you for your message, and I am very sorry your miniature arrived damaged.",
+      "Yes, absolutely, we can send you a replacement free of charge.",
+      /package|arrow|protect/i.test(ticket.preview || "")
+        ? "I have also noted the packaging request, so we can take extra care with this replacement."
+        : "",
+      "If you liked the rest of the minis and would like to add anything else from our shop, feel free to let me know and we can include it in the same shipment.",
+      `If your shipping address is still the same as in ${orderLabel}, we can move forward from our side.`,
+      signoff,
+    ]);
+  }
+
+  if (scenario.missing) {
+    return joinDraft([
+      greeting,
+      "Thank you for your message, and I am very sorry about that.",
+      "Of course, we can send the missing miniature free of charge.",
+      "If you liked the rest of the minis and would like to add anything else from our shop, feel free to let me know and we can include it in the same shipment.",
+      `If your shipping address is still the same as in ${orderLabel}, we can move forward from our side.`,
+      signoff,
+    ]);
+  }
+
+  return joinDraft([
+    greeting,
+    "Thank you for your message.",
+    "I am checking the details from our side so I can come back to you with the right next step.",
+    signoff,
+  ]);
+}
+
+function reviseDraftWithOperatorInput(ticket, currentDraft, operatorHint) {
+  const scenario = detectDraftScenario(ticket);
+  const hint = detectHintFlags(operatorHint);
+  const originalDraft = String(currentDraft || buildBaseDraftFromTicket(ticket)).trim();
+  let paragraphs = splitDraftIntoParagraphs(originalDraft);
+  const orderLabel = ticket.orderNumber && ticket.orderNumber !== "brak" ? `order ${ticket.orderNumber}` : "your order";
+
+  const signoffPattern = /^Best regards,/i;
+  const addressPattern = /If your shipping address is still the same/i;
+  const upsellPattern = /add anything else from our shop|send them over and we can help you estimate/i;
+  const timingPattern = /Our average fulfillment time|Production usually takes|Shipping after dispatch usually takes/i;
+  const systemCheckPattern = /I am checking .* in our system first|I am checking the order details from our side first/i;
+  const followupPattern = /As soon as I verify/i;
+  const replacementPromisePattern = /replacement free of charge|missing miniature free of charge/i;
+  const photoPattern = /please send .*photo|please send photos of the measured miniatures/i;
+
+  if (!paragraphs.some((paragraph) => signoffPattern.test(paragraph))) {
+    paragraphs.push("Best regards,\nIronShield Army Support");
+  }
+
+  if (hint.noUpsell) {
+    paragraphs = removeParagraphsMatching(paragraphs, upsellPattern);
+  }
+
+  if (hint.forceUpsell) {
+    insertBeforeSignoff(
+      paragraphs,
+      scenario.shippingQuestion
+        ? "If you already know which miniatures you want, feel free to send them over and we can help you estimate it a bit more closely."
+        : "If you liked the rest of the minis and would like to add anything else from our shop, feel free to let me know and we can include it in the same shipment."
+    );
+  }
+
+  if (hint.skipAddress) {
+    paragraphs = removeParagraphsMatching(paragraphs, addressPattern);
+  }
+
+  if (hint.confirmAddress || hint.mentionAddress) {
+    insertBeforeSignoff(
+      paragraphs,
+      `If your shipping address is still the same as in ${orderLabel}, we can move forward from our side.`
+    );
+  }
+
+  if (hint.noPromise) {
+    paragraphs = removeParagraphsMatching(paragraphs, replacementPromisePattern);
+    insertBeforeSignoff(
+      paragraphs,
+      "I am checking the order details from our side first so I can come back to you with the right next step."
+    );
+  }
+
+  if (hint.mentionPackaging) {
+    insertBeforeSignoff(
+      paragraphs,
+      "I have also noted the packaging request, so we can take extra care with this replacement."
+    );
+  }
+
+  if (hint.askWhatBroken) {
+    insertBeforeSignoff(paragraphs, "If you can, please let me know which part arrived broken.");
+  }
+
+  if (hint.askWhatMissing) {
+    insertBeforeSignoff(paragraphs, "If you can, please confirm exactly which miniature is missing from the order.");
+  }
+
+  if (scenario.scaleIssue && (hint.askMeasuredPhotos || hint.askPhoto)) {
+    paragraphs = removeParagraphsMatching(paragraphs, systemCheckPattern);
+    paragraphs = removeParagraphsMatching(paragraphs, followupPattern);
+    paragraphs = removeParagraphsMatching(paragraphs, photoPattern);
+    insertBeforeSignoff(
+      paragraphs,
+      hint.askMeasuredPhotos
+        ? "If possible, please send photos of the measured miniatures, ideally with a ruler visible in the frame, so we can verify the scale properly."
+        : "If it is possible, please send a quick photo of the miniature next to a ruler or another reference mini."
+    );
+    insertBeforeSignoff(
+      paragraphs,
+      "Once we have that, we can verify the scale properly and come back to you with the next step."
+    );
+  } else if (hint.askPhoto) {
+    paragraphs = removeParagraphsMatching(paragraphs, photoPattern);
+    if (scenario.damaged) {
+      insertBeforeSignoff(paragraphs, "If possible, please send a quick photo of the damage so we can match the replacement correctly.");
+    } else if (scenario.missing) {
+      insertBeforeSignoff(paragraphs, "If possible, please send a quick photo of what arrived so we can confirm the missing part correctly.");
+    }
+  }
+
+  if (hint.mentionDelayCheck) {
+    insertBeforeSignoff(
+      paragraphs,
+      `I am checking ${orderLabel} in our system first so I can give you an accurate update instead of guessing.`
+    );
+  }
+
+  if (hint.productionWindow || hint.shippingWindow || hint.mentionFulfillment) {
+    paragraphs = removeParagraphsMatching(paragraphs, timingPattern);
+    const timingLines = [];
+
+    if (hint.productionWindow) {
+      timingLines.push(`Production usually takes ${formatBusinessDayWindow(hint.productionWindow)}.`);
+    } else if (hint.mentionFulfillment) {
+      timingLines.push("Our average fulfillment time is about 5 business days.");
+    }
+
+    if (hint.shippingWindow) {
+      timingLines.push(`Shipping after dispatch usually takes around ${formatBusinessDayWindow(hint.shippingWindow, { prefix: "" })}.`);
+    }
+
+    if (timingLines.length) {
+      insertBeforeSignoff(paragraphs, timingLines.join(" "));
+    }
+  }
+
+  let revisedDraft = joinDraft(paragraphs);
+
+  if (String(revisedDraft).trim() === originalDraft) {
+    buildFallbackGuidanceParagraphs(ticket, operatorHint).forEach((paragraph) => {
+      insertBeforeSignoff(paragraphs, paragraph);
+    });
+    revisedDraft = joinDraft(paragraphs);
+  }
+
+  return revisedDraft;
+}
+
+function buildDraftFromTicket(ticket, operatorHint = "", currentDraft = "") {
+  const baseDraft = currentDraft && String(currentDraft).trim()
+    ? currentDraft
+    : buildBaseDraftFromTicket(ticket);
+
+  if (!String(operatorHint || "").trim()) {
+    return baseDraft;
+  }
+
+  return reviseDraftWithOperatorInput(ticket, baseDraft, operatorHint);
+}
+
+function categoryForTicket(ticket) {
+  const haystack = normalizeSupportText(
+    [
+      ticket.subject,
+      ticket.preview,
+      ticket.summary,
+      ...(ticket.tags || []),
+      ticket.internalCta?.baseLinkerAction || "",
+    ].join(" ")
+  );
+
+  if (/missing|brakuje|gift|gratis|bonus|free gift|welcome bribe/.test(haystack)) {
+    return "missing";
+  }
+
+  if (/tracking|where is my order|shipping|delivery|status przesylki|status przesylki|shipped/.test(haystack)) {
+    return "shipping";
+  }
+
+  if (/replacement arrived|follow-up|resend/.test(haystack)) {
+    return "replacement";
+  }
+
+  if (/damaged|broken|zlam|uszkod|snap/.test(haystack)) {
+    return "damaged";
+  }
+
+  return "other";
+}
+
+function waitingStateForTicket(ticket) {
+  if (ticket.status === "sent") return "client";
+  if (ticket.needsBaselinker && !ticket.baselinkerDone) return "us";
+  if (ticket.unread || ticket.status === "ready" || ticket.sendEnabled) return "us";
+  return "client";
+}
+
+function initialsForName(name) {
+  return String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] || "")
+    .join("")
+    .toUpperCase();
+}
+
+function firstInboundMessage(ticket) {
+  const first = Array.isArray(ticket.timeline) ? ticket.timeline[0] : null;
+  return first?.text || ticket.preview || ticket.summary || "";
+}
+
+function categoryCounts() {
+  return state.tickets.reduce(
+    (acc, ticket) => {
+      acc.all += 1;
+      acc[categoryForTicket(ticket)] += 1;
+      return acc;
+    },
+    { all: 0, missing: 0, damaged: 0, shipping: 0, replacement: 0, other: 0 }
+  );
+}
+
+function checklistItemsForTicket(ticket) {
+  const items = [
+    {
+      id: "review",
+      kind: "check",
+      label: "Sprawdz draft i dopasuj ton odpowiedzi do problemu klienta.",
+      hint: "To jest ostatni moment na poprawki przed wysylka.",
+      done: !ticket.unread,
+    },
+  ];
+
+  if (ticket.orderNumber && ticket.orderNumber !== "brak") {
+    items.push({
+      id: "open-order",
+      kind: "external",
+      label: `Sprawdz ${ticket.orderNumber} w BaseLinkerze`,
+      hint: "Skopiuj numer zamowienia i wykonaj ruch operacyjny.",
+      done: false,
+    });
+  }
+
+  if (ticket.internalCta?.baseLinkerAction) {
+    items.push({
+      id: "ops",
+      kind: "check",
+      label: ticket.internalCta.baseLinkerAction,
+      hint: ticket.internalCta.notes || "Ten krok zamyka czesc operacyjna sprawy.",
+      done: Boolean(ticket.baselinkerDone),
+    });
+  }
+
+  items.push({
+    id: "send",
+    kind: "check",
+    label: "Wyslij odpowiedz albo otworz gotowy mail w Gmailu.",
+    hint: isReplyApiConfigured()
+      ? "Backend reply jest skonfigurowany."
+      : state.config.composeFallback
+        ? "Mozesz otworzyc gotowa odpowiedz w Gmailu."
+        : "Na razie dostepne jest kopiowanie odpowiedzi.",
+    done: ticket.status === "sent",
+  });
+
+  return items;
+}
+
 function counts() {
   return state.tickets.reduce(
     (acc, ticket) => {
@@ -474,7 +1139,7 @@ function filteredTickets() {
 
   return state.tickets
     .filter((ticket) => {
-      if (state.filter !== "all" && ticket.status !== state.filter) return false;
+      if (state.filter !== "all" && categoryForTicket(ticket) !== state.filter) return false;
       if (!term) return true;
 
       const haystack = [
@@ -491,35 +1156,32 @@ function filteredTickets() {
 
       return haystack.includes(term);
     })
-    .sort((a, b) => {
-      if (a.unread !== b.unread) return a.unread ? -1 : 1;
-      return new Date(b.receivedAt) - new Date(a.receivedAt);
-    });
+    .sort((a, b) => new Date(a.receivedAt) - new Date(b.receivedAt));
 }
 
 function renderStats() {
   const summary = counts();
   const items = [
     {
-      label: "Nowe maile",
+      label: "Nowe",
       value: String(summary.unread),
       subtitle: "Swieze wiadomosci, ktore wymagaja ruchu supportu.",
       tone: "danger",
     },
     {
-      label: "Do BaseLinkera",
+      label: "BL",
       value: String(summary.ops),
       subtitle: "Sprawy, gdzie bez recznej operacji nie ma finalnej odpowiedzi.",
       tone: "warn",
     },
     {
-      label: "Gotowe drafty",
+      label: "Gotowe",
       value: String(summary.ready),
       subtitle: "Tu draft juz jest, a Ty tylko go przegladasz lub kopiujesz.",
       tone: "accent",
     },
     {
-      label: "Sync source",
+      label: "Feed",
       value: state.liveMeta.ticketCount ? String(state.liveMeta.ticketCount) : "0",
       subtitle: `Ostatni feed: ${state.liveMeta.syncSource}`,
       tone: "neutral",
@@ -531,7 +1193,9 @@ function renderStats() {
   items.forEach((item) => {
     const node = el.statCardTemplate.content.firstElementChild.cloneNode(true);
     node.classList.add(`stat-card--${item.tone}`);
-    node.querySelector(".mini-label").textContent = item.label;
+    node.title = item.subtitle;
+    node.setAttribute("aria-label", `${item.label}: ${item.value}. ${item.subtitle}`);
+    node.querySelector(".section-label").textContent = item.label;
     node.querySelector(".stat-value").textContent = item.value;
     node.querySelector(".stat-subtitle").textContent = item.subtitle;
     el.statsGrid.appendChild(node);
@@ -542,14 +1206,16 @@ function renderAlert() {
   const unreadTickets = state.tickets.filter((ticket) => ticket.unread);
 
   el.alertHeadline.textContent = unreadTickets.length
-    ? `${unreadTickets.length} mail(e) klientow czekaja na ruch`
-    : "Brak nowych maili klientow";
+    ? `${unreadTickets.length} watkow czeka teraz na odpowiedz`
+    : "Kolejka klientow jest pod kontrola";
 
   if (!unreadTickets.length) {
     el.alertSubline.textContent =
-      usesRemoteApi()
-        ? "Panel jest ustawiony na prywatne API. Gdy backend zwroci nowe sprawy, pojawia sie tutaj."
-        : "To publiczna wersja demo. Nowe dane pojawia sie dopiero po aktualizacji feedu w repozytorium.";
+      usesEncryptedFeed()
+        ? "Panel po odblokowaniu czyta zaszyfrowany feed klientow."
+        : usesRemoteApi()
+          ? "Panel czyta prywatne API z mailami klientow."
+          : "To publiczna warstwa panelu oparta o feed demonstracyjny.";
     return;
   }
 
@@ -561,28 +1227,42 @@ function renderAlert() {
 
 function renderSyncMeta() {
   const updated = state.liveMeta.updatedAt ? formatDate(state.liveMeta.updatedAt) : "brak syncu";
+  const checked = state.liveMeta.checkedAt ? formatDate(state.liveMeta.checkedAt) : "jeszcze nie sprawdzano";
   const syncingText = authEnabled() && !state.isUnlocked
-    ? "Panel jest zablokowany haslem operatora."
+    ? "Panel jest zablokowany."
     : hasPrivateSnapshot()
-      ? `Aktywny jest prywatny snapshot z pliku ${state.privateSnapshot.name}.`
+      ? `Aktywny snapshot: ${state.privateSnapshot.name}.`
       : state.isSyncing
-        ? usesRemoteApi()
-          ? "Trwa odswiezanie prywatnego API..."
-          : "Trwa odswiezanie feedu demo..."
-        : usesRemoteApi()
-          ? "Panel czyta prywatny endpoint JSON."
-          : "Panel czyta publiczny plik support-data.js.";
-  el.syncMeta.textContent = `Ostatni sync: ${updated}. Zrodlo: ${state.liveMeta.syncSource}. ${syncingText}`;
+        ? usesEncryptedFeed()
+          ? "Trwa odszyfrowanie feedu..."
+          : usesRemoteApi()
+            ? "Trwa odswiezanie prywatnego API..."
+            : "Trwa odswiezanie feedu demo..."
+        : usesEncryptedFeed()
+          ? "Zaszyfrowany live feed."
+          : usesRemoteApi()
+            ? "Prywatne API."
+            : "Feed demonstracyjny.";
+  el.syncMeta.textContent = `Feed: ${updated} • Sprawdzone: ${checked} • ${syncingText}`;
   el.syncNowBtn.disabled = state.isSyncing || (authEnabled() && !state.isUnlocked) || hasPrivateSnapshot();
   el.syncNowBtn.textContent = hasPrivateSnapshot()
     ? "Snapshot aktywny"
     : state.isSyncing
       ? "Odswiezanie..."
-      : "Odswiez dane";
-  el.clearSnapshotBtn.hidden = !hasPrivateSnapshot();
+      : "Odswiez maile";
+  if (el.importSnapshotBtn) {
+    el.importSnapshotBtn.hidden = usesEncryptedFeed();
+  }
+  if (el.clearSnapshotBtn) {
+    el.clearSnapshotBtn.hidden = usesEncryptedFeed() || !hasPrivateSnapshot();
+  }
 }
 
 function renderRuntimeLabels() {
+  if (!el.runtimeModeLabel || !el.runtimeFeaturesLabel || !el.runtimeNextStepLabel) {
+    return;
+  }
+
   if (hasPrivateSnapshot()) {
     el.runtimeModeLabel.textContent = "Prywatny snapshot";
     el.runtimeFeaturesLabel.textContent = "Realne maile z lokalnego pliku";
@@ -596,15 +1276,18 @@ function renderRuntimeLabels() {
 }
 
 function renderFilters() {
-  const summary = counts();
+  const summary = categoryCounts();
   el.filterBar.innerHTML = "";
 
   FILTERS.forEach((filter) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `filter-chip${state.filter === filter.id ? " active" : ""}`;
-    const countValue = filter.id === "all" ? summary.all : summary[filter.id];
-    button.textContent = `${filter.label} (${countValue})`;
+    button.className = `queue-cat${state.filter === filter.id ? " is-active" : ""}`;
+    const countValue = summary[filter.id] || 0;
+    button.innerHTML = `
+      <span class="queue-cat-label">${escapeHtml(filter.label)}</span>
+      <span class="queue-cat-count">${countValue}</span>
+    `;
     button.addEventListener("click", () => {
       state.filter = filter.id;
       saveUiState();
@@ -617,6 +1300,9 @@ function renderFilters() {
 function renderQueue() {
   const tickets = filteredTickets();
   el.ticketList.innerHTML = "";
+  if (el.queueTitleCount) {
+    el.queueTitleCount.textContent = String(tickets.length);
+  }
 
   if (!tickets.length) {
     el.ticketList.innerHTML = `
@@ -631,20 +1317,38 @@ function renderQueue() {
   tickets.forEach((ticket) => {
     const node = el.ticketCardTemplate.content.firstElementChild.cloneNode(true);
     const statusMeta = STATUS_META[ticket.status];
+    const category = categoryForTicket(ticket);
+    const waiting = waitingStateForTicket(ticket);
+    const badgeText = ticket.needsBaselinker && !ticket.baselinkerDone
+      ? "BL check"
+      : ticket.status === "sent"
+        ? "sent"
+        : ticket.status === "ready" || ticket.sendEnabled
+          ? "draft ready"
+          : statusMeta.label;
 
     node.classList.toggle("active", ticket.id === state.selectedId);
-    node.classList.add(`ticket-card--${ticket.status}`);
+    node.classList.add("queue-item");
     node.classList.toggle("is-unread", ticket.unread);
-    node.classList.toggle("needs-ops", ticket.needsBaselinker && !ticket.baselinkerDone);
-    node.querySelector(".ticket-name").textContent = ticket.customerName;
-    node.querySelector(".ticket-age").textContent = formatAge(ticket.receivedAt);
-    node.querySelector(".ticket-subject").textContent = ticket.subject;
-    node.querySelector(".ticket-preview").textContent = ticket.preview;
-    node.querySelector(".ticket-order").textContent = ticket.orderNumber || "brak";
+    node.querySelector(".queue-item-subject").textContent = ticket.subject;
+    node.querySelector(".queue-item-time").textContent = formatAge(ticket.receivedAt);
+    node.querySelector(".queue-item-from").textContent = ticket.customerName;
+    node.querySelector(".queue-item-order").textContent = ticket.orderNumber || "brak";
+    node.querySelector(".queue-item-preview").textContent = ticket.preview;
 
-    const statusNode = node.querySelector(".ticket-status");
-    statusNode.textContent = ticket.unread ? `${statusMeta.label} • new` : statusMeta.label;
-    statusNode.className = `ticket-status badge ${statusMeta.badgeClass}`.trim();
+    const rail = node.querySelector(".queue-item-rail");
+    rail.dataset.cat = category;
+
+    const chip = node.querySelector(".queue-chip");
+    chip.textContent = CATEGORY_META[category].label;
+    chip.dataset.cat = category;
+
+    const waitingNode = node.querySelector(".queue-waiting");
+    waitingNode.dataset.waiting = waiting;
+    waitingNode.textContent = waiting === "us" ? "czekam na akcje" : "czekam na klienta";
+
+    const badgeNode = node.querySelector(".queue-item-badge");
+    badgeNode.textContent = badgeText;
 
     node.addEventListener("click", () => {
       state.selectedId = ticket.id;
@@ -670,114 +1374,383 @@ function renderDetail() {
   }
 
   const statusMeta = STATUS_META[ticket.status];
-  const focus = focusMessage(ticket);
+  const category = categoryForTicket(ticket);
+  const waiting = waitingStateForTicket(ticket);
+  const checklistItems = checklistItemsForTicket(ticket);
+  const hasDraft = Boolean((ticket.draft || "").trim());
+  const readyToSend = canSendTicket(ticket);
+  const primaryActionLabel =
+    ticket.status === "sent"
+      ? "Mail wyslany"
+      : readyToSend
+        ? isReplyApiConfigured()
+          ? "Wyslij maila"
+          : state.config.composeFallback
+            ? "Otworz w Gmailu"
+            : "Gotowe do wysylki"
+        : "Przygotuj do wysylki";
+  const primaryActionTitle =
+    ticket.status === "sent"
+      ? "Ta sprawa jest juz oznaczona jako wyslana."
+      : readyToSend
+        ? isReplyApiConfigured()
+          ? "Wysle odpowiedz do klienta przez prywatny backend."
+          : state.config.composeFallback
+            ? "Otworzy Gmaila z gotowa odpowiedzia do wyslania."
+            : "Mail jest przygotowany, ale brak jeszcze backendu wysylki."
+        : "Najpierw przygotuj odpowiedz do wysylki.";
+  const messageBody = firstInboundMessage(ticket);
 
   el.detailView.innerHTML = `
-    <article class="customer-card customer-card--${ticket.status}">
-      <div class="detail-top">
-        <div>
-          <p class="eyebrow">Wybrane zgloszenie</p>
-          <h2>${escapeHtml(ticket.subject)}</h2>
+    <header class="case-header">
+      <div class="case-header-top">
+        <div class="case-header-person">
+          <span class="avatar-pill">${escapeHtml(initialsForName(ticket.customerName))}</span>
+          <div>
+            <div class="case-header-name">${escapeHtml(ticket.customerName)}</div>
+            <div class="case-header-email">${escapeHtml(ticket.customerEmail)}</div>
+          </div>
         </div>
-        <div class="detail-badges">
-          <span class="badge ${statusMeta.badgeClass}">${statusMeta.label}</span>
-          <span class="badge">${escapeHtml(ticket.source || "Repo feed")}</span>
-          <span class="badge">${escapeHtml(ticket.language || "EN")}</span>
+        <div class="case-header-meta">
+          <span class="waiting" data-waiting="${waiting}">${waiting === "us" ? "czekam na akcje" : "czekam na klienta"}</span>
+          <span class="case-header-time">${formatDate(ticket.receivedAt)}</span>
         </div>
       </div>
 
-      <div class="customer-grid">
-        <div>
-          <span class="mini-label">Klient</span>
-          <strong class="customer-name">${escapeHtml(ticket.customerName)}</strong>
-          <p class="customer-email">${escapeHtml(ticket.customerEmail)}</p>
+      <div class="case-header-subject">
+        <span class="chip" data-cat="${category}">${escapeHtml(CATEGORY_META[category].label)}</span>
+        <h1 class="case-subject">${escapeHtml(ticket.subject)}</h1>
+      </div>
+
+      <div class="case-header-pills">
+        <button class="copy-pill" type="button" data-copy-value="${escapeHtml(ticket.orderNumber || "brak")}">
+          <span>${escapeHtml(ticket.orderNumber || "brak")}</span>
+          <span class="copy-pill-icon">nr</span>
+        </button>
+        <button class="copy-pill" type="button" data-copy-value="${escapeHtml(ticket.customerEmail)}">
+          <span>${escapeHtml(ticket.customerEmail)}</span>
+          <span class="copy-pill-icon">@</span>
+        </button>
+        <button id="copyBaseLinkerBtn" class="btn btn-ghost btn-sm" type="button">Skopiuj do BL</button>
+        <span class="badge ${statusMeta.badgeClass}">${statusMeta.label}</span>
+      </div>
+    </header>
+
+    <section class="case-summary">
+      <div class="case-summary-label">Podsumowanie AI</div>
+      <p>${escapeHtml(ticket.summary)}</p>
+    </section>
+
+    <section class="case-body">
+      <div class="case-body-from">
+        <span class="case-body-from-name">${escapeHtml(ticket.customerName)}</span>
+        <span class="case-body-from-email">&lt;${escapeHtml(ticket.customerEmail)}&gt;</span>
+        <span class="case-body-spacer"></span>
+        <span class="case-body-time">${formatDate(ticket.receivedAt)}</span>
+      </div>
+      <pre class="case-body-text">${escapeHtml(messageBody)}</pre>
+
+      <div class="case-inline-meta">
+        <span class="section-label">Podglad sprawy</span>
+        <p class="case-inline-copy">${escapeHtml(ticket.preview || "")}</p>
+      </div>
+
+      ${Array.isArray(ticket.timeline) && ticket.timeline.length > 1 ? `
+        <div class="case-history">
+          <div class="case-history-toggle">
+            <span>Historia watku</span>
+            <span class="case-history-count">${ticket.timeline.length}</span>
+          </div>
+          <ul class="case-history-list">
+            ${ticket.timeline
+              .map(
+                (item) => `
+                  <li class="case-history-row" data-dir="${item.author === "IronShield Support" || item.author === "Panel" ? "out" : "in"}">
+                    <span class="case-history-subj">${escapeHtml(item.author)}: ${escapeHtml(item.text)}</span>
+                    <span class="case-history-time">${escapeHtml(item.time)}</span>
+                  </li>
+                `
+              )
+              .join("")}
+          </ul>
         </div>
-        <div>
-          <span class="mini-label">Numer zamowienia</span>
-          <strong>${escapeHtml(ticket.orderNumber || "brak")}</strong>
-          <p>${formatDate(ticket.receivedAt)}</p>
+      ` : ""}
+    </section>
+
+    <section class="draft">
+      <div class="draft-header">
+        <div class="draft-header-left">
+          <span class="section-label">Draft odpowiedzi</span>
         </div>
-        <div>
-          <span class="mini-label">BaseLinker check</span>
-          <strong>${ticket.needsBaselinker ? "Tak" : "Nie"}</strong>
-          <p>${ticket.baselinkerDone ? "Oznaczone jako zrobione" : "Otwarte"}</p>
+        <div class="draft-header-right">
+          <button id="copyBtn" type="button" class="btn btn-sm">Kopiuj odpowiedz</button>
         </div>
       </div>
-    </article>
 
-    <article class="focus-card focus-card--${ticket.status}">
-      <p class="mini-label">Najwazniejsze teraz</p>
-      <strong>${escapeHtml(focus.title)}</strong>
-      <p class="detail-copy">${escapeHtml(focus.body)}</p>
-    </article>
-
-    <article class="summary-strip summary-strip--${ticket.status}">
-      <div>
-        <p class="mini-label">Podsumowanie sprawy</p>
-        <h3 class="summary-title">${escapeHtml(ticket.summary)}</h3>
+      <div class="draft-workbench">
+        <div class="draft-body">
+          <textarea id="draftEditor" class="textarea draft-textarea" placeholder="Tutaj pojawi sie draft odpowiedzi."></textarea>
+        </div>
+        <div class="draft-hint">
+          <div class="draft-hint-label">Twoje wskazowki do draftu</div>
+          <textarea id="operatorHintEditor" class="textarea draft-hint-textarea" placeholder="np. napisz ze produkcja 5 dni i wysylka 7-10, albo popros o fotki zmierzonych figurek z linijka"></textarea>
+          <div class="draft-hint-chips">
+            ${HINT_CHIPS.map((chip) => `<button type="button" class="draft-hint-chip" data-hint-chip="${escapeHtml(chip)}">+ ${escapeHtml(chip)}</button>`).join("")}
+          </div>
+          <button id="generateDraftBtn" type="button" class="btn btn-primary btn-sm draft-hint-apply">Przerob wg wskazowek</button>
+        </div>
       </div>
-      <div class="tag-row">
-        ${ticket.tags.map((tag) => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}
-      </div>
-    </article>
+    </section>
 
-    <article class="cta-card cta-card--${ticket.status}">
-      <p class="mini-label">CTA dla Ciebie</p>
-      <ul class="cta-list">
-        <li><strong>Numer zamowienia:</strong> ${escapeHtml(ticket.internalCta.orderNumber)}</li>
-        <li><strong>Mail klienta:</strong> ${escapeHtml(ticket.internalCta.customerEmail)}</li>
-        <li><strong>Co zrobic w BaseLinkerze / na produkcji:</strong> ${escapeHtml(ticket.internalCta.baseLinkerAction)}</li>
-        <li><strong>Uwagi:</strong> ${escapeHtml(ticket.internalCta.notes)}</li>
+    <section class="qa-bar">
+      <div class="qa-bar-label">
+        <span class="section-label">Szybkie akcje</span>
+      </div>
+      <div class="qa-bar-btns">
+        <button id="needsBlBtn" type="button" class="btn btn-sm">Oznacz: trzeba BaseLinker</button>
+        <button id="blDoneBtn" type="button" class="btn btn-sm">${ticket.baselinkerDone ? "Cofnij BL done" : "BaseLinker zrobiony"}</button>
+        <button id="markSentBtn" type="button" class="btn btn-sm">Oznacz jako wyslane</button>
+      </div>
+    </section>
+
+    <section class="checklist">
+      <div class="checklist-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="section-label">Kroki operacyjne</span>
+        </div>
+      </div>
+      <ul class="checklist-list">
+        ${checklistItems
+          .map((item) => {
+            if (item.kind === "external") {
+              return `
+                <li class="step-row step-external">
+                  <span class="step-gutter">#</span>
+                  <div class="step-label">
+                    <span class="step-text">${escapeHtml(item.label)}</span>
+                    <span class="step-hint">${escapeHtml(item.hint || "")}</span>
+                  </div>
+                  <button class="btn btn-sm" type="button" data-step-open="${escapeHtml(item.id)}">Skopiuj numer</button>
+                  <span class="step-kind-tag">manual</span>
+                </li>
+              `;
+            }
+
+            return `
+              <li class="step-row step-check${item.done ? " is-done" : ""}">
+                <input id="check-${escapeHtml(item.id)}" data-step-check="${escapeHtml(item.id)}" class="check" type="checkbox" ${item.done ? "checked" : ""} />
+                <label for="check-${escapeHtml(item.id)}" class="step-label">
+                  <span class="step-text">${escapeHtml(item.label)}</span>
+                  <span class="step-hint">${escapeHtml(item.hint || "")}</span>
+                </label>
+                <span class="step-kind-tag">manual</span>
+              </li>
+            `;
+          })
+          .join("")}
       </ul>
-    </article>
+    </section>
 
-    <article class="composer-card composer-card--${ticket.status}">
-      <label for="draftEditor">
-        <span class="mini-label">Proponowana odpowiedz</span>
-        <textarea id="draftEditor"></textarea>
-      </label>
-
-      <div class="composer-actions">
-        <button id="approveBtn" type="button" class="action-btn primary">Zatwierdz draft</button>
-        <button id="copyBtn" type="button" class="action-btn">Kopiuj odpowiedz</button>
-        <button id="needsBlBtn" type="button" class="action-btn">Oznacz: trzeba BaseLinker</button>
-        <button id="blDoneBtn" type="button" class="action-btn secondary">${ticket.baselinkerDone ? "BaseLinker zrobiony" : "Oznacz BaseLinker jako zrobiony"}</button>
-        <button id="markSentBtn" type="button" class="action-btn">Oznacz jako wyslane</button>
-        <button id="sendBtn" type="button" class="action-btn" disabled>Niedostepne w demo</button>
+    <div class="sendbar">
+      <div class="sendbar-left">
+        <span class="section-label">Co dalej</span>
       </div>
-      <p class="composer-note">
-        Publiczna wersja demo nie wysyla maili. Wysylka wroci dopiero po podpietym prywatnym backendzie.
-      </p>
-    </article>
-
-    <article class="timeline-card">
-      <p class="mini-label">Historia watku</p>
-      ${ticket.timeline
-        .map(
-          (item) => `
-            <div class="timeline-item">
-              <div>
-                <strong class="timeline-author">${escapeHtml(item.author)}</strong>
-                <p>${escapeHtml(item.text)}</p>
-              </div>
-              <span class="timeline-time">${escapeHtml(item.time)}</span>
-            </div>
-          `
-        )
-        .join("")}
-    </article>
+      <div class="sendbar-right">
+        ${state.config.composeFallback && primaryActionLabel !== "Otworz w Gmailu" ? `<button id="openGmailBtn" type="button" class="btn btn-sm">Otworz w Gmailu</button>` : ""}
+        <button id="primaryDraftBtn" type="button" class="btn btn-primary btn-sm" ${!hasDraft || ticket.status === "sent" ? "disabled" : ""} title="${escapeHtml(primaryActionTitle)}">${primaryActionLabel}</button>
+      </div>
+    </div>
   `;
 
+  const operatorHintEditor = document.getElementById("operatorHintEditor");
   const draftEditor = document.getElementById("draftEditor");
-  draftEditor.value = ticket.draft || "";
+  operatorHintEditor.value = ticket.operatorHint || "";
+  draftEditor.value = ticket.draft || buildBaseDraftFromTicket(ticket);
 
-  draftEditor.addEventListener("input", (event) => {
-    updateTicket(ticket.id, { draft: event.target.value });
+  operatorHintEditor.addEventListener("input", (event) => {
+    updateTicket(ticket.id, { operatorHint: event.target.value }, { renderNow: false });
   });
 
-  document.getElementById("approveBtn").addEventListener("click", () => {
-    updateTicket(ticket.id, { status: "ready", unread: false });
-    toast("Draft zatwierdzony.");
+  draftEditor.addEventListener("input", (event) => {
+    updateTicket(ticket.id, { draft: event.target.value }, { renderNow: false });
+  });
+
+  document.querySelectorAll("[data-copy-value]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyValue || "");
+        toast("Skopiowane.");
+      } catch {
+        toast("Nie udalo sie skopiowac.");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-hint-chip]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = button.dataset.hintChip || "";
+      operatorHintEditor.value = operatorHintEditor.value.trim()
+        ? `${operatorHintEditor.value.trim()}, ${value}`
+        : value;
+      updateTicket(ticket.id, { operatorHint: operatorHintEditor.value }, { renderNow: false });
+    });
+  });
+
+  document.getElementById("copyBaseLinkerBtn").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(ticket.orderNumber || "");
+      toast("Skopiowalem numer zamowienia do wyszukania w BaseLinkerze.");
+    } catch {
+      toast("Nie udalo sie skopiowac numeru zamowienia.");
+    }
+  });
+
+  document.getElementById("generateDraftBtn").addEventListener("click", () => {
+    const liveTicket = selectedTicket() || ticket;
+    const previousDraft = String(draftEditor.value || "").trim();
+    const nextDraft = buildDraftFromTicket(
+      { ...liveTicket, draft: draftEditor.value, operatorHint: operatorHintEditor.value },
+      operatorHintEditor.value,
+      draftEditor.value
+    );
+    draftEditor.value = nextDraft;
+    updateTicket(
+      liveTicket.id,
+      {
+        draft: nextDraft,
+        operatorHint: operatorHintEditor.value,
+      },
+      { renderNow: false }
+    );
+
+    if (!operatorHintEditor.value.trim()) {
+      toast("Wpisz najpierw wskazowke do draftu.");
+      return;
+    }
+
+    if (String(nextDraft).trim() === previousDraft) {
+      toast("Ta wskazowka nie zmienila draftu. Napisz ja prosciej, np. 'popros o zdjecia' albo 'dodaj wysylka 7-10 dni'.");
+      return;
+    }
+
+    toast("Draft przerobiony wedlug Twoich wskazowek.");
+  });
+
+  document.querySelectorAll("[data-step-check]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      const stepId = checkbox.dataset.stepCheck;
+
+      if (stepId === "review") {
+        updateTicket(ticket.id, { unread: !checkbox.checked });
+        return;
+      }
+
+      if (stepId === "ops") {
+        updateTicket(ticket.id, {
+          needsBaselinker: true,
+          baselinkerDone: checkbox.checked,
+          unread: false,
+        });
+        return;
+      }
+
+      if (stepId === "send") {
+        updateTicket(ticket.id, { status: checkbox.checked ? "sent" : "ready", unread: false });
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-step-open]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(ticket.orderNumber || "");
+        toast("Numer zamowienia skopiowany do wyszukania w BaseLinkerze.");
+      } catch {
+        toast("Nie udalo sie skopiowac numeru zamowienia.");
+      }
+    });
+  });
+
+  document.getElementById("primaryDraftBtn").addEventListener("click", async () => {
+    const currentDraft = draftEditor.value.trim();
+
+    if (!currentDraft) {
+      toast("Najpierw uzupelnij draft odpowiedzi.");
+      draftEditor.focus();
+      return;
+    }
+
+    if (!canSendTicket({ ...ticket, draft: currentDraft })) {
+      updateTicket(ticket.id, {
+        status: "ready",
+        unread: false,
+        sendEnabled: true,
+        draft: currentDraft,
+      });
+      toast(
+        isReplyApiConfigured()
+          ? "Draft przygotowany. Mozesz teraz kliknac Wyslij maila."
+          : state.config.composeFallback
+            ? "Draft przygotowany. Mozesz teraz otworzyc odpowiedz w Gmailu."
+            : "Draft przygotowany do wysylki."
+      );
+      return;
+    }
+
+    const primaryBtn = document.getElementById("primaryDraftBtn");
+    primaryBtn.disabled = true;
+    primaryBtn.textContent = isReplyApiConfigured()
+      ? "Wysylanie..."
+      : state.config.composeFallback
+        ? "Otwieram Gmail..."
+        : "Brak backendu";
+
+    try {
+      const result = await sendReply({ ...ticket, draft: currentDraft }, currentDraft);
+
+      if (result?.composed) {
+        updateTicket(ticket.id, {
+          unread: false,
+          sendEnabled: true,
+          draft: currentDraft,
+          timeline: [
+            ...(ticket.timeline || []),
+            {
+              author: "Panel",
+              time: formatDate(new Date().toISOString()),
+              text: "Otwarto Gmaila z przygotowana odpowiedzia do wyslania.",
+            },
+          ],
+        });
+        toast("Otworzylem Gmaila z gotowa odpowiedzia. Po wyslaniu oznacz sprawe jako wyslana.");
+        return;
+      }
+
+      updateTicket(ticket.id, {
+        status: "sent",
+        unread: false,
+        sendEnabled: false,
+        draft: currentDraft,
+        timeline: [
+          ...(ticket.timeline || []),
+          {
+            author: "IronShield Support",
+            time: formatDate(new Date().toISOString()),
+            text: "Draft zostal wyslany do klienta z panelu.",
+          },
+        ],
+      });
+      toast("Mail wyslany do klienta.");
+    } catch (error) {
+      if (error?.message === "reply_not_configured") {
+        toast("Ta wersja panelu nie ma jeszcze bezposredniej wysylki. Skorzystaj z Gmaila albo kopiowania.");
+      } else {
+        toast("Nie udalo sie wyslac maila. Sprawdz backend reply i sprobuj ponownie.");
+      }
+
+      primaryBtn.disabled = false;
+      primaryBtn.textContent = primaryActionLabel;
+    }
   });
 
   document.getElementById("copyBtn").addEventListener("click", async () => {
@@ -788,6 +1761,19 @@ function renderDetail() {
       toast("Nie udalo sie skopiowac. Skopiuj tekst recznie.");
     }
   });
+
+  if (document.getElementById("openGmailBtn")) {
+    document.getElementById("openGmailBtn").addEventListener("click", () => {
+      const currentDraft = draftEditor.value.trim();
+      if (!currentDraft) {
+        toast("Najpierw przygotuj draft.");
+        return;
+      }
+
+      openComposeFallback(ticket, currentDraft);
+      toast("Otworzylem Gmaila z gotowa odpowiedzia.");
+    });
+  }
 
   document.getElementById("needsBlBtn").addEventListener("click", () => {
     updateTicket(ticket.id, {
@@ -861,7 +1847,7 @@ function renderOpsPanel() {
   el.opsChecklist.innerHTML = opsItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
 
-function updateTicket(id, changes) {
+function updateTicket(id, changes, { renderNow = true } = {}) {
   state.tickets = state.tickets.map((ticket) => (ticket.id === id ? { ...ticket, ...changes } : ticket));
   state.overrides[id] = { ...(state.overrides[id] || {}) };
 
@@ -873,7 +1859,10 @@ function updateTicket(id, changes) {
 
   saveOverrides();
   saveUiState();
-  render();
+
+  if (renderNow) {
+    render();
+  }
 }
 
 function toast(message) {
@@ -897,6 +1886,7 @@ function escapeHtml(text) {
 }
 
 function render() {
+  renderTweaks();
   renderRuntimeLabels();
   renderStats();
   renderAlert();
@@ -904,13 +1894,86 @@ function render() {
   renderFilters();
   renderQueue();
   renderDetail();
-  renderOpsPanel();
 }
 
 function applyPayloadFromRemote(rawPayload) {
   applyPayload(rawPayload);
   saveUiState();
   render();
+}
+
+function base64ToBytes(value) {
+  const binary = window.atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function concatBytes(left, right) {
+  const combined = new Uint8Array(left.length + right.length);
+  combined.set(left, 0);
+  combined.set(right, left.length);
+  return combined;
+}
+
+async function deriveFeedKey(passcode, salt, iterations) {
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(passcode),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  return window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    {
+      name: "AES-GCM",
+      length: 256,
+    },
+    false,
+    ["decrypt"]
+  );
+}
+
+async function decryptEncryptedFeed(envelope, passcode) {
+  if (!envelope || typeof envelope !== "object") {
+    throw new Error("feed_missing");
+  }
+
+  const iterations = Number(envelope?.kdf?.iterations);
+  if (!Number.isFinite(iterations) || iterations < 1000) {
+    throw new Error("feed_kdf_invalid");
+  }
+
+  const salt = base64ToBytes(envelope.kdf.salt);
+  const iv = base64ToBytes(envelope.iv);
+  const ciphertext = base64ToBytes(envelope.ciphertext);
+  const tag = base64ToBytes(envelope.tag);
+  const encryptedBytes = concatBytes(ciphertext, tag);
+  const key = await deriveFeedKey(passcode, salt, iterations);
+
+  const plainBuffer = await window.crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv,
+      tagLength: 128,
+    },
+    key,
+    encryptedBytes
+  );
+
+  return JSON.parse(new TextDecoder().decode(plainBuffer));
 }
 
 function fetchRemotePayload() {
@@ -928,59 +1991,187 @@ function fetchRemotePayload() {
   });
 }
 
-function refreshLiveData({ silent = false } = {}) {
-  if (state.isSyncing || (authEnabled() && !state.isUnlocked) || hasPrivateSnapshot()) return;
+function postReplyPayload(payload) {
+  return fetch(state.config.replyApiUrl, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+    body: JSON.stringify(payload),
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`reply_status_${response.status}`);
+    }
 
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return {};
+    }
+
+    return response.json();
+  });
+}
+
+function buildReplyPayload(ticket, draft) {
+  return {
+    id: ticket.id,
+    customerEmail: ticket.customerEmail,
+    customerName: ticket.customerName,
+    subject: ticket.subject,
+    orderNumber: ticket.orderNumber,
+    draft,
+    replyMessageId: ticket.replyMessageId || "",
+    gmailThreadId: ticket.gmailThreadId || "",
+  };
+}
+
+function openComposeFallback(ticket, draft) {
+  const subjectPrefix = /^re:/i.test(ticket.subject || "") ? "" : "Re: ";
+  const params = new URLSearchParams({
+    view: "cm",
+    fs: "1",
+    tf: "1",
+    to: ticket.customerEmail || "",
+    su: `${subjectPrefix}${ticket.subject || ""}`,
+    body: draft,
+  });
+
+  window.open(`https://mail.google.com/mail/?${params.toString()}`, "_blank", "noopener");
+}
+
+async function sendReply(ticket, draft) {
+  if (isReplyApiConfigured()) {
+    return postReplyPayload(buildReplyPayload(ticket, draft));
+  }
+
+  if (state.config.composeFallback) {
+    openComposeFallback(ticket, draft);
+    return { composed: true };
+  }
+
+  throw new Error("reply_not_configured");
+}
+
+function fetchEncryptedPayload(passcode) {
+  return fetch(state.config.encryptedFeedUrl, {
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`encrypted_status_${response.status}`);
+      }
+
+      return response.json();
+    })
+    .then((envelope) => decryptEncryptedFeed(envelope, passcode));
+}
+
+function loadDemoScriptPayload() {
+  return new Promise((resolve, reject) => {
+    const staleRuntimeScripts = document.querySelectorAll('script[data-role="support-data-runtime"]');
+    staleRuntimeScripts.forEach((script) => script.remove());
+
+    const script = document.createElement("script");
+    script.src = `${LIVE_DATA_SCRIPT}?ts=${Date.now()}`;
+    script.async = true;
+    script.dataset.role = "support-data-runtime";
+
+    script.onload = () => resolve(window.__IRONSHIELD_SUPPORT_DATA__);
+    script.onerror = () => reject(new Error("demo_feed_failed"));
+
+    document.head.appendChild(script);
+  });
+}
+
+async function refreshLiveData({ silent = false, passcode = "" } = {}) {
+  if (state.isSyncing || (authEnabled() && !state.isUnlocked && !passcode) || hasPrivateSnapshot()) {
+    return false;
+  }
+
+  const before = {
+    updatedAt: state.liveMeta.updatedAt,
+    ticketCount: state.liveMeta.ticketCount,
+  };
   state.isSyncing = true;
   renderSyncMeta();
 
-  if (usesRemoteApi()) {
-    fetchRemotePayload()
-      .then((payload) => {
-        state.isSyncing = false;
-        applyPayloadFromRemote(payload);
-        if (!silent) {
-          toast("Dane z prywatnego API odswiezone.");
-        }
-      })
-      .catch(() => {
-        state.isSyncing = false;
-        renderSyncMeta();
-        if (!silent) {
-          toast("Nie udalo sie pobrac danych z prywatnego API.");
-        }
-      });
+  try {
+    if (usesEncryptedFeed()) {
+      const secret = passcode || state.feedPasscode;
 
-    return;
-  }
+      if (!secret) {
+        throw new Error("missing_passcode");
+      }
 
-  const staleRuntimeScripts = document.querySelectorAll('script[data-role="support-data-runtime"]');
-  staleRuntimeScripts.forEach((script) => script.remove());
+      const payload = await fetchEncryptedPayload(secret);
+      state.feedPasscode = secret;
+      applyPayloadFromRemote(payload);
+      state.liveMeta.checkedAt = new Date().toISOString();
 
-  const script = document.createElement("script");
-  script.src = `${LIVE_DATA_SCRIPT}?ts=${Date.now()}`;
-  script.async = true;
-  script.dataset.role = "support-data-runtime";
+      if (!silent) {
+        toast(
+          before.updatedAt === state.liveMeta.updatedAt && before.ticketCount === state.liveMeta.ticketCount
+            ? "Skrzynka sprawdzona. Brak nowych zmian."
+            : "Feed klientow odswiezony."
+        );
+      }
 
-  script.onload = () => {
-    state.isSyncing = false;
-    applyPayload(window.__IRONSHIELD_SUPPORT_DATA__);
+      return true;
+    }
+
+    if (usesRemoteApi()) {
+      const payload = await fetchRemotePayload();
+      applyPayloadFromRemote(payload);
+      state.liveMeta.checkedAt = new Date().toISOString();
+
+      if (!silent) {
+        toast(
+          before.updatedAt === state.liveMeta.updatedAt && before.ticketCount === state.liveMeta.ticketCount
+            ? "API sprawdzone. Brak nowych zmian."
+            : "Dane z prywatnego API odswiezone."
+        );
+      }
+
+      return true;
+    }
+
+    const payload = await loadDemoScriptPayload();
+    applyPayload(payload);
+    state.liveMeta.checkedAt = new Date().toISOString();
     saveUiState();
     render();
-    if (!silent) {
-      toast("Dane dashboardu odswiezone.");
-    }
-  };
 
-  script.onerror = () => {
-    state.isSyncing = false;
+    if (!silent) {
+      toast(
+        before.updatedAt === state.liveMeta.updatedAt && before.ticketCount === state.liveMeta.ticketCount
+          ? "Feed sprawdzony. Brak nowych zmian."
+          : "Dane dashboardu odswiezone."
+      );
+    }
+
+    return true;
+  } catch (error) {
+    state.liveMeta.checkedAt = new Date().toISOString();
     renderSyncMeta();
     if (!silent) {
-      toast("Nie udalo sie odswiezyc feedu dashboardu.");
+      toast(
+        usesEncryptedFeed()
+          ? "Nie udalo sie odczytac feedu klientow."
+          : usesRemoteApi()
+            ? "Nie udalo sie pobrac danych z prywatnego API."
+            : "Nie udalo sie odswiezyc feedu dashboardu."
+      );
     }
-  };
-
-  document.head.appendChild(script);
+    return false;
+  } finally {
+    state.isSyncing = false;
+    renderSyncMeta();
+  }
 }
 
 function importPrivateSnapshot(file) {
@@ -1038,23 +2229,47 @@ function attachEvents() {
     lockPanel();
   });
 
-  el.importSnapshotBtn.addEventListener("click", () => {
-    el.importSnapshotInput.click();
-  });
+  if (el.tweaksToggleBtn) {
+    el.tweaksToggleBtn.addEventListener("click", () => {
+      toggleTweaksPanel();
+    });
+  }
 
-  el.importSnapshotInput.addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    importPrivateSnapshot(file);
-  });
+  if (el.closeTweaksBtn) {
+    el.closeTweaksBtn.addEventListener("click", () => {
+      toggleTweaksPanel(false);
+    });
+  }
 
-  el.clearSnapshotBtn.addEventListener("click", () => {
-    savePrivateSnapshot(null);
-    applyDefaultPayload();
-    saveUiState();
-    render();
-    toast("Wylaczono prywatny snapshot. Panel wrocil do danych demo.");
-  });
+  if (el.tweaksPanel) {
+    el.tweaksPanel.querySelectorAll("[data-tweak-key]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setTweak(button.dataset.tweakKey, button.dataset.tweakValue);
+      });
+    });
+  }
+
+  if (el.importSnapshotBtn && el.importSnapshotInput) {
+    el.importSnapshotBtn.addEventListener("click", () => {
+      el.importSnapshotInput.click();
+    });
+
+    el.importSnapshotInput.addEventListener("change", (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      importPrivateSnapshot(file);
+    });
+  }
+
+  if (el.clearSnapshotBtn) {
+    el.clearSnapshotBtn.addEventListener("click", () => {
+      savePrivateSnapshot(null);
+      applyDefaultPayload();
+      saveUiState();
+      render();
+      toast("Wylaczono prywatny snapshot. Panel wrocil do danych demo.");
+    });
+  }
 
   el.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value;
@@ -1074,14 +2289,22 @@ function attachEvents() {
   el.syncNowBtn.addEventListener("click", () => {
     refreshLiveData();
   });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.tweaksOpen) {
+      toggleTweaksPanel(false);
+    }
+  });
 }
 
 loadUiState();
 loadOverrides();
+state.tweaks = readTweaks();
 state.config = runtimeConfig();
 state.isUnlocked = readAuthState();
 state.privateSnapshot = readPrivateSnapshot();
 applyDefaultPayload();
+applyTweaks();
 attachEvents();
 render();
 applyAuthState();
